@@ -7,6 +7,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 from sklearn.preprocessing import StandardScaler
+import numpy as np
 
 # When run by path (e.g. python project/source/load_team_data.py), project root may not be on path.
 _project_root = Path(__file__).resolve().parent.parent
@@ -53,6 +54,9 @@ def running_averages(df, window_size):
 
 identifying_cols = ["team_name", "season_year", "opponent_name", "team_box_id", 'game_id', 'team_id', 'game_date', 'neutral_site', 'opponent_team_id']
 
+in_game_stats_cols = ['pts', 'fgm', 'fga', 'fg_pct', 'fg3m', 'fg3a', 'fg3_pct', 'ftm',
+                      'fta', 'ft_pct', 'oreb', 'dreb', 'reb', 'ast', 'tov', 'stl', 
+                      'blk', 'blka', 'pf', 'pfd', 'pace', 'poss']
 
 def calc_diffs(g, cols):
     g = g.copy()
@@ -76,6 +80,20 @@ def add_rolling_averages(df, group_cols, stats, window_size, inplace=False):
     group = df.shift(1).groupby(group_cols)
     roll = group[stats].transform(lambda x: x.rolling(window=window_size).mean()).fillna(0)
     roll.columns = [f"{s}_rolling_mean_prev_{window_size}" for s in stats]
+    df[roll.columns] = roll
+    return df
+
+def add_rolling_sums(df, group_cols, stats, window_size, inplace=False):
+    if not inplace:
+        df = df.copy()
+    
+    group = df.shift(1).groupby(group_cols)
+    roll = (
+        group[stats].transform(
+            lambda x: x.rolling(window=window_size, min_periods=1
+                ).sum()).fillna(0).astype(int)
+            )
+    roll.columns = [f"{s}s_last_{window_size}" for s in stats]
     df[roll.columns] = roll
     return df
 
@@ -129,12 +147,10 @@ if __name__ == "__main__":
     box_score_df["win_percentage"] = box_score_df["total_wins"] / box_score_df["game_number"]
 
     # Wins in the 5 prior games (excluding current; resets at start of each team-season)
-    box_score_df["wins_last_5"] = (
-        group["win"].transform(lambda x: x.shift(1).rolling(5, min_periods=1).sum()).fillna(0).astype(int))
-    box_score_df["wins_last_10"] = (
-        group["win"].transform(lambda x: x.shift(1).rolling(10, min_periods=1).sum()).fillna(0).astype(int))
-    box_score_df["win_percentage_last_5"] = box_score_df["wins_last_5"] / 5
-    box_score_df["win_percentage_last_10"] = box_score_df["wins_last_10"] / 10
+    box_score_df = add_rolling_sums(box_score_df, ["team_name", "season_year"], ["win"], 5)
+    box_score_df = add_rolling_sums(box_score_df, ["team_name", "season_year"], ["win"], 10)
+    box_score_df["win_percentage_last_5"] = (box_score_df["wins_last_5"] / (np.minimum(5, box_score_df["game_number"] - 1))).fillna(0)
+    box_score_df["win_percentage_last_10"] = (box_score_df["wins_last_10"] / (np.minimum(10, box_score_df["game_number"] - 1))).fillna(0)
 
 #%%
     # Transformed Statistics
@@ -178,7 +194,14 @@ if __name__ == "__main__":
 
     box_score_df = add_rolling_averages(box_score_df, group_cols, cols_to_avg, 5)
     box_score_df = add_expanding_averages(box_score_df, group_cols, cols_to_avg)
-    
+
+
+    # Can not diff pace on a per game basis because it is the same for both teams, but we can diff the average and rolling average pace to get a better idea of team diffs
+    pace_cols = [col for col in box_score_df.columns if "pace_" in col]
+    pace_diff_df = box_score_df.groupby("game_id")[pace_cols].apply(calc_diffs, cols=pace_cols).reset_index(level=0, drop=True).reindex(box_score_df.index)
+    pace_diff_cols = [col for col in pace_diff_df.columns if col not in box_score_df.columns]
+    box_score_df = pd.concat([box_score_df, pace_diff_df[pace_diff_cols]], axis=1)
+
 #%%
     display(box_score_df.head())
 

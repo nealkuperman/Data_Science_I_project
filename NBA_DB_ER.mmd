@@ -1,0 +1,111 @@
+erDiagram
+    TEAM {
+        int team_id PK
+        string team_name
+        string team_abbreviation
+        string team_city
+        string team_conference
+        string team_division
+        string team_code
+        string team_slug
+    }
+
+    PLAYER {
+        int player_id PK
+        string first_name
+        string last_name
+        string position
+        string height
+        string weight
+        string country
+        int from_year
+    }
+
+    DRAFT {
+        int draft_id PK
+        int player_id FK
+        int draft_year
+        int draft_round
+        int draft_pick
+        int team_id FK
+    }
+
+    GAME {
+        int game_id PK
+        date game_date
+        string season_year
+        int minutes_played
+        int home_team_id FK
+        int away_team_id FK
+        int home_score
+        int away_score
+        int overtime
+        int neutral_site
+    }
+
+    TEAM_BOX_SCORE {
+        int team_box_id PK
+        int game_id FK
+        int team_id FK
+        boolean is_home
+        boolean win
+        int pts
+        int fgm
+        int fga
+        decimal fg_pct
+        int fg3m
+        int fg3a
+        decimal fg3_pct
+        int ftm
+        int fta
+        decimal ft_pct
+        int oreb
+        int dreb
+        int reb
+        int ast
+        int tov
+        int stl
+        int blk
+        int blka
+        int pf
+        int pfd
+    }
+
+    PLAYER_BOX_SCORE {
+        int player_box_id PK
+        int game_id FK
+        int player_id FK
+        int team_id FK
+        decimal min_played
+        int pts
+        int fgm
+        int fga
+        decimal fg_pct
+        int fg3m
+        int fg3a
+        decimal fg3_pct
+        int ftm
+        int fta
+        decimal ft_pct
+        int oreb
+        int dreb
+        int reb
+        int ast
+        int tov
+        int stl
+        int blk
+        int blka
+        int pf
+        int pfd
+        int plus_minus
+    }
+
+    TEAM ||--o{ GAME : "home"
+    TEAM ||--o{ GAME : "away"
+    TEAM ||--o{ DRAFT : "drafted by"
+    PLAYER ||--o{ DRAFT : "drafted"
+    GAME ||--o{ TEAM_BOX_SCORE : contains
+    GAME ||--o{ PLAYER_BOX_SCORE : contains
+    PLAYER ||--o{ PLAYER_BOX_SCORE : records
+    TEAM ||--o{ PLAYER_BOX_SCORE : "plays for"
+    TEAM ||--o{ TEAM_BOX_SCORE : records

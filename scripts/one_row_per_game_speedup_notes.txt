@@ -1,0 +1,57 @@
+one_row_per_game_speedup_notes
+=============================
+
+Faster alternatives to groupby().apply(one_row_per_game) for computing per-game
+diffs (e.g. team_1[cols] - team_2[cols]) between the two rows in each game.
+
+
+1. Self-merge on game_id
+------------------------
+Merge the dataframe to itself on game_id so each row is joined to the "other"
+row in the same game (e.g. require is_home != is_home, or build a "home" and
+"away" filtered frame and merge). Then you have both teams' stats on one row;
+do vectorized subtraction (home[cols] - away[cols]) for all games at once.
+One merge + one subtraction, no Python loop over groups.
+
+
+2. Sort and slice (iloc[0::2] / iloc[1::2])
+------------------------------------------
+Sort by game_id and then is_home (e.g. home first) so the two rows for each
+game are consecutive. Use iloc[0::2] and iloc[1::2] to get "first team" and
+"second team" in each pair; compute the diff array for all pairs in one go;
+then assign back to the full dataframe (e.g. by repeating each diff to the
+two rows of that game). No groupby, only indexing and vectorized ops.
+
+
+3. Pivot to one row per game, then merge back
+---------------------------------------------
+Pivot so you have one row per game_id with columns like ast_home, ast_away, etc.
+Compute all diffs in vectorized form on this wide frame. Then merge this back
+to the long df on game_id so each of the two rows per game gets the right diff
+(home row gets home-minus-away, away row gets away-minus-home, e.g. via a mask).
+One pivot, one subtract, one merge.
+
+
+4. Map from game_id to the other row's stats
+--------------------------------------------
+Build a lookup (e.g. dict or small DataFrame keyed by game_id) that holds the
+two rows' stat vectors per game. Then for each row in df, use game_id to grab
+the "other" row's stats and subtract. Avoids groupby but still has a Python
+loop over rows; can be faster than groupby-apply if the loop is tight and
+lookup is cheap, but (1)–(3) usually win on large data.
+
+
+5. Pure NumPy (or Numba)
+------------------------
+Convert game_id and the stat columns to arrays. Sort by game_id so the two
+rows of each game are adjacent. In one or a few vectorized passes (or a short
+Numba loop), compute the diffs and write into an output array; then assign
+that array back into the dataframe. Fastest for very large data; more code
+and less pandas-native.
+
+
+Suggested order to try
+---------------------
+Start with (1) self-merge or (3) pivot + merge back; both avoid groupby and
+stay in pandas. Use (2) if you prefer to avoid the merge and are comfortable
+with "every two rows = one game" after a sort.

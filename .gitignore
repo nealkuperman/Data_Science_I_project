@@ -1,0 +1,57 @@
+# LaTeX auxiliary files
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.glg
+*.glo
+*.gls
+*.glsdefs
+*.idx
+*.ilg
+*.ind
+*.lof
+*.log
+*.lot
+*.mw
+*.nlo
+*.nls
+*.out
+*.run.xml
+*.synctex.gz
+*.thm
+*.toc
+*.xdy
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+
+# Environment (secrets)
+.env
+.env*
+
+# Textbook (large PDF files)
+textbook/
+
+# Data
+data/
+
+# scratch and outdated files
+scratch/
+outdated/

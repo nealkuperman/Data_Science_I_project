@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: nba_postgres
+    environment:
+      POSTGRES_USER: nba_user
+      POSTGRES_PASSWORD: nba_password
+      POSTGRES_DB: nba_db                # Primary database
+    ports:
+      - "5432:5432"
+    volumes:
+      - nba_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/01_init.sql
+      - ./init_test_db.sql:/docker-entrypoint-initdb.d/00_create_test_db.sql
+      - ./schema:/schema
+    restart: unless-stopped
+
+volumes:
+  nba_data:

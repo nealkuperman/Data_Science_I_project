@@ -89,10 +89,12 @@ def add_rolling_sums(df, group_cols, stats, window_size, inplace=False):
     
     group = df.shift(1).groupby(group_cols)
     roll = (
-        group[stats].transform(
-            lambda x: x.rolling(window=window_size, min_periods=1
-                ).sum()).fillna(0).astype(int)
-            )
+        group[stats]
+        .transform(lambda x: x.rolling(window=window_size, min_periods=1).sum())
+        .replace([np.inf, -np.inf], 0)
+        .fillna(0)
+        .astype(int)
+    )
     roll.columns = [f"{s}s_last_{window_size}" for s in stats]
     df[roll.columns] = roll
     return df
@@ -203,43 +205,89 @@ if __name__ == "__main__":
     box_score_df = pd.concat([box_score_df, pace_diff_df[pace_diff_cols]], axis=1)
 
 #%%
-    display(box_score_df.head())
+    unneeded_identifying_cols = ['team_name','opponent_name', 'opponent_pts', 'team_box_id', 
+                                 'game_id', 'team_id', 'season_year', 'game_date',  'neutral_site', 
+                                 'opponent_team_id', 'game_number']
 
+    unneeded_in_game_stats_cols = ['win', 'pts', 'fgm', 'fga', 'fg_pct', 'fg3m', 'fg3a', 'fg3_pct', 
+                                   'ftm', 'fta', 'ft_pct', 'oreb', 'dreb', 'reb', 'ast', 'tov', 
+                                   'stl', 'blk', 'blka', 'pf', 'pfd', 'pace', 'poss', 'minutes_played']
+
+    unneeded_team_summary_cols = ['total_wins', 'total_losses', 'diff_pts', 'diff_ast', 'diff_tov',
+                                  'total_wins', 'total_losses', 'diff_pts', 'diff_ast', 'diff_tov',
+                                  'diff_blk', 'diff_blka', 'diff_fgm', 'diff_fga', 'diff_ftm',
+                                  'diff_fta', 'diff_pf', 'diff_pfd', 'diff_stl', 'diff_oreb', 'diff_dreb',
+                                  'diff_fg3m', 'diff_fg3a'] 
+
+    unneeded_diff_cols = ['diff_days_rest_average', 'diff_days_rest_rolling_mean_prev_5', 'diff_win_percentage_average',
+                          'diff_win_percentage_last_10_average', 'diff_win_percentage_last_10_rolling_mean_prev_5',
+                          'diff_win_percentage_last_5_average', 'diff_win_percentage_last_5_rolling_mean_prev_5',
+                          'diff_win_percentage_rolling_mean_prev_5', 'diff_wins_last_10_average',
+                          'diff_wins_last_10_rolling_mean_prev_5', 'diff_wins_last_5_average',
+                          'diff_wins_last_5_rolling_mean_prev_5']
+
+    unneeded_cols = unneeded_identifying_cols + unneeded_in_game_stats_cols + unneeded_team_summary_cols + unneeded_diff_cols
+
+    x_cols = [
+    'days_rest', 'wins_last_10', 'wins_last_5', 'win_percentage', 'win_percentage_last_10',
+    'win_percentage_last_5', 'is_home', 'is_back_to_back',
     
+    # diff cols:
+    'diff_win_percentage', 'diff_win_percentage_last_10', 'diff_win_percentage_last_5',
+    'diff_wins_last_10', 'diff_wins_last_5', 'diff_days_rest',
 
+    # team expanding averages:
+    'ast_average', 'blk_average', 'blka_average', 'dreb_average', 'fg3a_average',
+    'fg3m_average', 'fga_average', 'fgm_average', 'fta_average', 'ftm_average',
+    'oreb_average', 'pace_average', 'pf_average', 'pfd_average', 'pts_average',
+    'reb_average', 'stl_average', 'tov_average',
+    
+    # team diff expanding averages:
+    'diff_ast_average', 'diff_blk_average', 'diff_blka_average', 'diff_dreb_average',
+    'diff_fg3a_average', 'diff_fg3m_average', 'diff_fga_average', 'diff_fgm_average',
+    'diff_fta_average', 'diff_ftm_average', 'diff_oreb_average', 'diff_pace_average',
+    'diff_pf_average', 'diff_pfd_average', 'diff_pts_average', 'diff_stl_average',
+    'diff_tov_average', 
 
+    # team rolling averages (past 5 games):
+    'ast_rolling_mean_prev_5',  'blk_rolling_mean_prev_5', 'blka_rolling_mean_prev_5',
+    'dreb_rolling_mean_prev_5', 'fg3a_rolling_mean_prev_5', 'fg3m_rolling_mean_prev_5',
+    'fga_rolling_mean_prev_5', 'fgm_rolling_mean_prev_5', 'fta_rolling_mean_prev_5',
+    'ftm_rolling_mean_prev_5', 'oreb_rolling_mean_prev_5', 'pace_rolling_mean_prev_5',
+    'pf_rolling_mean_prev_5', 'pfd_rolling_mean_prev_5', 'pts_rolling_mean_prev_5',
+    'reb_rolling_mean_prev_5', 'stl_rolling_mean_prev_5', 'tov_rolling_mean_prev_5',
 
-    x_cols = [col for col in box_score_df.columns if col not in identifying_cols]
-    y_cols = ["win"]
+    # team diff rolling averages (past 5 games):
+    'diff_ast_rolling_mean_prev_5', 'diff_blk_rolling_mean_prev_5', 'diff_blka_rolling_mean_prev_5',
+    'diff_dreb_rolling_mean_prev_5', 'diff_fg3a_rolling_mean_prev_5', 'diff_fg3m_rolling_mean_prev_5',
+    'diff_fga_rolling_mean_prev_5', 'diff_fgm_rolling_mean_prev_5', 'diff_fta_rolling_mean_prev_5',
+    'diff_ftm_rolling_mean_prev_5', 'diff_oreb_rolling_mean_prev_5', 'diff_pace_rolling_mean_prev_5',
+    'diff_pf_rolling_mean_prev_5', 'diff_pfd_rolling_mean_prev_5', 'diff_pts_rolling_mean_prev_5',
+    'diff_stl_rolling_mean_prev_5', 'diff_tov_rolling_mean_prev_5']
+
+    #%%
+
+    x_cols = [col for col in box_score_df.columns if col not in unneeded_cols]
+    y_cols = ["win", "diff_pts"]
+    y_col = ["win"]
+    modeling_df = box_score_df[x_cols + y_cols]
     X = box_score_df[x_cols]
+
     y = box_score_df["win"].astype(int)
-    corr = X.corr()
+    corr = modeling_df.corr()
 
-    # for idx, val in corr["win"].sort_values().items():
-    #     print(idx, round(val, 4))
-
-
-# diff_win_percentage 0.4628826375576224
-# diff_pts_average 0.32958041209781436
-
-# diff_wins_last_10 0.245674329483666
-# # diff_wins_last_5 0.2073831163372514
-# diff_ast_average 0.1874072795721165
-# win_percentage_last_10 0.1549
-# diff_fgm_rolling_mean_prev_5 0.1442
-# dreb_average 0.1357
-# diff_blk_average 0.1355
-# diff_stl_average 0.1301
-# is_home 0.1018
-# diff_days_rest 0.0575
-# diff_blka_average -0.1356
-# blk_average 0.0458
-# stl_average 0.0673
+    print("Correlation of win with other columns:")
+    for idx, val in corr["win"].sort_values().items():
+        print(idx, round(val, 4))
+#%%
+    print("Correlation of points diff with other columns:")
+    for idx, val in corr["diff_pts"].sort_values().items():
+    
+        print(idx, round(val, 4))
+#%%
 
 
-# diff_win_percentage_rolling_mean_prev_5 0.1867856488923239
 
-# , "win_percentage_last_10" , "diff_fgm_rolling_mean_prev_5", "diff_pts_average", , "diff_ast_average", "diff_stl_average", "blk_average",  "diff_blka_average"
 
 
 
@@ -285,7 +333,37 @@ if __name__ == "__main__":
 
 # %%
 
+    import xgboost as xgb
+    import multiprocessing
+    from urllib.error import HTTPError
 
+    from sklearn.datasets import fetch_california_housing, make_regression
+    from sklearn.model_selection import GridSearchCV
+    X = box_score_df[x_cols]
+    y = box_score_df["win"].astype(int)
+
+
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.4, random_state=42, stratify=y)
+
+
+    # Make sure the number of threads is balanced.
+    xgb_model = xgb.XGBRegressor(
+        n_jobs=multiprocessing.cpu_count() // 2, tree_method="hist"
+    )
+    clf = GridSearchCV(
+        xgb_model,
+        {"max_depth": [2, 4, 6], "n_estimators": [50, 100, 200]},
+        verbose=1,
+        n_jobs=2,
+    )
+    clf.fit(X_train, y_train)
+    print(clf.best_score_)
+    print(clf.best_params_)
+
+# , "gamma": [0, 0,1, 0.5]
+
+
+#%%
 teams_query = """
     SELECT t. team_id, team_name
     FROM team t
@@ -337,3 +415,85 @@ TO_DO:
 """
 
 
+"""
+Cols not needed or do not make sense for modeling
+
+Identifying cols:
+    'team_name','opponent_name', 'opponent_pts', 'team_box_id', 
+    'game_id', 'team_id', 'season_year', 'game_date',  'neutral_site', 
+    'opponent_team_id', 'game_number',
+
+In game stats cols: 
+    'win', 'pts', 'fgm', 'fga', 'fg_pct', 'fg3m', 'fg3a', 'fg3_pct', 
+    'ftm', 'fta', 'ft_pct', 'oreb', 'dreb', 'reb', 'ast', 'tov', 
+    'stl', 'blk', 'blka', 'pf', 'pfd', 'pace', 'poss', 'minutes_played',
+
+Team Summary Cols:
+    'total_wins', 'total_losses', 'diff_pts', 'diff_ast', 'diff_tov',
+    'diff_blk', 'diff_blka', 'diff_fgm', 'diff_fga', 'diff_ftm',
+    'diff_fta', 'diff_pf', 'diff_pfd', 'diff_stl', 'diff_oreb', 'diff_dreb',
+    'diff_fg3m', 'diff_fg3a',
+
+diff cols:
+    'diff_days_rest_average', 'diff_days_rest_rolling_mean_prev_5', 'diff_win_percentage_average',
+    'diff_win_percentage_last_10_average', 'diff_win_percentage_last_10_rolling_mean_prev_5',
+    'diff_win_percentage_last_5_average', 'diff_win_percentage_last_5_rolling_mean_prev_5',
+    'diff_win_percentage_rolling_mean_prev_5', 'diff_wins_last_10_average',
+    'diff_wins_last_10_rolling_mean_prev_5', 'diff_wins_last_5_average',
+    'diff_wins_last_5_rolling_mean_prev_5',
+
+Cols to consider for modeling:
+
+team cols:
+    'days_rest', 'wins_last_10', 'wins_last_5', 'win_percentage', 'win_percentage_last_10',
+    'win_percentage_last_5', 'is_home', 'is_back_to_back',
+
+diff cols:
+    'diff_win_percentage', 'diff_win_percentage_last_10', 'diff_win_percentage_last_5',
+    'diff_wins_last_10', 'diff_wins_last_5', 'diff_days_rest',
+
+team expanding averages:
+    'ast_average', 'blk_average', 'blka_average', 'dreb_average', 'fg3a_average',
+    'fg3m_average', 'fga_average', 'fgm_average', 'fta_average', 'ftm_average',
+    'oreb_average', 'pace_average', 'pf_average', 'pfd_average', 'pts_average',
+    'reb_average', 'stl_average', 'tov_average',
+    
+team diff expanding averages:
+    'diff_ast_average', 'diff_blk_average', 'diff_blka_average', 'diff_dreb_average',
+    'diff_fg3a_average', 'diff_fg3m_average', 'diff_fga_average', 'diff_fgm_average',
+    'diff_fta_average', 'diff_ftm_average', 'diff_oreb_average', 'diff_pace_average',
+    'diff_pf_average', 'diff_pfd_average', 'diff_pts_average', 'diff_stl_average',
+    'diff_tov_average', 
+
+team rolling averages (past 5 games):
+    'ast_rolling_mean_prev_5',  'blk_rolling_mean_prev_5', 'blka_rolling_mean_prev_5',
+    'dreb_rolling_mean_prev_5', 'fg3a_rolling_mean_prev_5', 'fg3m_rolling_mean_prev_5',
+    'fga_rolling_mean_prev_5', 'fgm_rolling_mean_prev_5', 'fta_rolling_mean_prev_5',
+    'ftm_rolling_mean_prev_5', 'oreb_rolling_mean_prev_5', 'pace_rolling_mean_prev_5',
+    'pf_rolling_mean_prev_5', 'pfd_rolling_mean_prev_5', 'pts_rolling_mean_prev_5',
+    'reb_rolling_mean_prev_5', 'stl_rolling_mean_prev_5', 'tov_rolling_mean_prev_5',
+
+team diff rolling averages (past 5 games):
+    'diff_ast_rolling_mean_prev_5', 'diff_blk_rolling_mean_prev_5', 'diff_blka_rolling_mean_prev_5',
+    'diff_dreb_rolling_mean_prev_5', 'diff_fg3a_rolling_mean_prev_5', 'diff_fg3m_rolling_mean_prev_5',
+    'diff_fga_rolling_mean_prev_5', 'diff_fgm_rolling_mean_prev_5', 'diff_fta_rolling_mean_prev_5',
+    'diff_ftm_rolling_mean_prev_5', 'diff_oreb_rolling_mean_prev_5', 'diff_pace_rolling_mean_prev_5',
+    'diff_pf_rolling_mean_prev_5', 'diff_pfd_rolling_mean_prev_5', 'diff_pts_rolling_mean_prev_5',
+    'diff_stl_rolling_mean_prev_5', 'diff_tov_rolling_mean_prev_5',
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+"""

@@ -78,8 +78,15 @@ def add_rolling_averages(df, group_cols, stats, window_size, inplace=False):
         df = df.copy()
     
     group = df.shift(1).groupby(group_cols)
-    roll = group[stats].transform(lambda x: x.rolling(window=window_size).mean()).fillna(0)
+    roll = (
+        group[stats]
+        .transform(lambda x: x.rolling(window=window_size, min_periods=1).mean())
+        .replace([np.inf, -np.inf], 0)
+        .fillna(0)
+        .astype(int)
+    )
     roll.columns = [f"{s}_rolling_mean_prev_{window_size}" for s in stats]
+    # roll.columns = [f"{s}_rolling_mean_prev_5" for s in stats]
     df[roll.columns] = roll
     return df
 
@@ -104,7 +111,7 @@ def add_expanding_averages(df, group_cols, stats, inplace=False):
         df = df.copy()
     
     group = df.groupby(group_cols)
-    avg = group[stats].transform(lambda x: x.expanding().mean()).fillna(0)
+    avg = group[stats].transform(lambda x: x.expanding().mean()).replace([np.inf, -np.inf], 0).fillna(0)
     avg.columns = [f"{s}_average" for s in stats]
     df[avg.columns] = avg
     return df
@@ -151,8 +158,8 @@ if __name__ == "__main__":
     # Wins in the 5 prior games (excluding current; resets at start of each team-season)
     box_score_df = add_rolling_sums(box_score_df, ["team_name", "season_year"], ["win"], 5)
     box_score_df = add_rolling_sums(box_score_df, ["team_name", "season_year"], ["win"], 10)
-    box_score_df["win_percentage_last_5"] = (box_score_df["wins_last_5"] / (np.minimum(5, box_score_df["game_number"] - 1))).fillna(0)
-    box_score_df["win_percentage_last_10"] = (box_score_df["wins_last_10"] / (np.minimum(10, box_score_df["game_number"] - 1))).fillna(0)
+    box_score_df["win_percentage_last_5"] = (box_score_df["wins_last_5"] / (np.minimum(5, box_score_df["game_number"] - 1))).replace([np.inf, -np.inf], 0).fillna(0)
+    box_score_df["win_percentage_last_10"] = (box_score_df["wins_last_10"] / (np.minimum(10, box_score_df["game_number"] - 1))).replace([np.inf, -np.inf], 0).fillna(0)
 
 #%%
     # Transformed Statistics
@@ -194,7 +201,8 @@ if __name__ == "__main__":
              "oreb", "dreb", "fg3m", "fg3a",
              "pace"] + diff_cols
 
-    box_score_df = add_rolling_averages(box_score_df, group_cols, cols_to_avg, 5)
+    # box_score_df = add_rolling_averages(box_score_df, group_cols, cols_to_avg, 5)
+    box_score_df = add_rolling_averages(box_score_df, group_cols, cols_to_avg, 10)
     box_score_df = add_expanding_averages(box_score_df, group_cols, cols_to_avg)
 
 
@@ -226,7 +234,14 @@ if __name__ == "__main__":
                           'diff_wins_last_10_rolling_mean_prev_5', 'diff_wins_last_5_average',
                           'diff_wins_last_5_rolling_mean_prev_5']
 
-    unneeded_cols = unneeded_identifying_cols + unneeded_in_game_stats_cols + unneeded_team_summary_cols + unneeded_diff_cols
+    col_prefixes = ['diff_days_rest_rolling_mean_prev_', 'diff_win_percentage_last_10_rolling_mean_prev_', 'diff_win_percentage_last_5_rolling_mean_prev_'
+    'diff_win_percentage_rolling_mean_prev_', 'diff_wins_last_10_rolling_mean_prev_', 'diff_wins_last_5_rolling_mean_prev_']
+
+    cols_to_ignore = []
+    for prefix in col_prefixes:
+        cols_to_ignore.extend([col for col in box_score_df.columns if col.startswith(prefix)])
+
+    unneeded_cols = unneeded_identifying_cols + unneeded_in_game_stats_cols + unneeded_team_summary_cols + unneeded_diff_cols + cols_to_ignore
 
     x_cols = [
     'days_rest', 'wins_last_10', 'wins_last_5', 'win_percentage', 'win_percentage_last_10',
@@ -335,32 +350,69 @@ if __name__ == "__main__":
 
     import xgboost as xgb
     import multiprocessing
-    from urllib.error import HTTPError
+    from sklearn.metrics import accuracy_score
 
-    from sklearn.datasets import fetch_california_housing, make_regression
     from sklearn.model_selection import GridSearchCV
+
+    x_cols = [col for col in box_score_df.columns if col not in unneeded_cols]
+    y_cols = ["win", "diff_pts"]
+    y_col = ["win"]
+    modeling_df = box_score_df[x_cols + y_cols]
+
+
+
     X = box_score_df[x_cols]
     y = box_score_df["win"].astype(int)
 
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.4, random_state=42, stratify=y)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 
 
     # Make sure the number of threads is balanced.
-    xgb_model = xgb.XGBRegressor(
+    xgb_model = xgb.XGBClassifier(
         n_jobs=multiprocessing.cpu_count() // 2, tree_method="hist"
     )
     clf = GridSearchCV(
         xgb_model,
-        {"max_depth": [2, 4, 6], "n_estimators": [50, 100, 200]},
+        {"max_depth": [5, 6, 7, 8, 9, 10, 12], "n_estimators": [10, 15, 16, 17], "gamma": [ 11, 11.5, 11.25, 12]},
         verbose=1,
         n_jobs=2,
     )
     clf.fit(X_train, y_train)
     print(clf.best_score_)
     print(clf.best_params_)
+    y_pred = clf.predict(X_test)
+    # Evaluate the model
+    accuracy = accuracy_score(y_test, y_pred)
+    print(f"Accuracy: {accuracy * 100:.2f}%")
 
-# , "gamma": [0, 0,1, 0.5]
+    # Feature importance (XGBoost) and optional permutation importance
+    from sklearn.inspection import permutation_importance
+    from matplotlib import pyplot as plt
+
+    best = clf.best_estimator_
+    feature_names = X_train.columns
+    importances = best.feature_importances_
+    sorted_idx = importances.argsort()
+    plt.figure(figsize=(8, 20))
+    plt.barh(feature_names[sorted_idx], importances[sorted_idx])
+    plt.xlabel("XGBoost feature importance")
+    plt.tight_layout()
+    plt.show()
+
+    # Permutation importance on test set (optional; slower)
+    perm = permutation_importance(best, X_test, y_test, n_repeats=20, random_state=42, n_jobs=-1)
+    sorted_idx_perm = perm.importances_mean.argsort()
+    perm_importance_df = pd.DataFrame({
+        "feature": feature_names[sorted_idx_perm],
+        "permutation_importance_mean": perm.importances_mean[sorted_idx_perm],
+    })
+    plt.figure(figsize=(8, 20))
+    plt.barh(feature_names[sorted_idx_perm], perm.importances_mean[sorted_idx_perm])
+    plt.xlabel("Permutation importance (test set)")
+    plt.tight_layout()
+    plt.show()
+
 
 
 #%%

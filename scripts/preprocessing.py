@@ -116,101 +116,195 @@ def add_expanding_averages(df, group_cols, stats, inplace=False):
     df[avg.columns] = avg
     return df
 
-
-if __name__ == "__main__":
-    query = """
-        WITH base AS (
-            SELECT
-                tbs.*,
-                g.season_year,
-                g.game_date,
-                g.minutes_played,
-                g.neutral_site,
-                CASE WHEN tbs.is_home THEN g.away_team_id ELSE g.home_team_id END AS opponent_team_id
-            FROM team_box_score tbs
-            JOIN game g ON tbs.game_id = g.game_id
-        )
-        SELECT
-            t.team_name,
-            opp.team_name  AS opponent_name,
-            tbs_opp.pts    AS opponent_pts,
-            base.*
-        FROM base
-        JOIN team t ON base.team_id = t.team_id
-        LEFT JOIN team opp ON opp.team_id = base.opponent_team_id
-        LEFT JOIN team_box_score tbs_opp ON tbs_opp.game_id = base.game_id AND tbs_opp.team_id = base.opponent_team_id
-    """
-    box_score_df = pd.read_sql(query, default_engine)
-
-
-    # Earlier game first, last game last (per team per season) so rolling/rank are in date order
-    box_score_df = box_score_df.sort_values(by=["team_name", "season_year", "game_date"]).reset_index(drop=True)
-
-    # Game number and days rest
-    group = box_score_df.groupby(["team_name", "season_year"])
-    box_score_df["game_number"] = group["game_date"].transform(lambda x: x.rank(method="first"))
-    box_score_df["days_rest"] = group["game_date"].transform(lambda x: x.diff().dt.days).fillna(0)
-    box_score_df["is_back_to_back"] = (group["game_date"].transform(lambda x: x.diff().dt.days).fillna(0) == 1).astype(int)
-    box_score_df["total_wins"] = group["win"].transform(lambda x: x.cumsum()).astype(int)
-    box_score_df["total_losses"] = (box_score_df["game_number"] - box_score_df["total_wins"]).astype(int)
-    box_score_df["win_percentage"] = box_score_df["total_wins"] / box_score_df["game_number"]
+def pipeline(df, rolling_window_size = [10], inplace=False):
+    if not inplace:
+        df = df.copy()
+    
+    group_cols = ["team_name", "season_year"]
+    group = df.groupby(group_cols)
+    df["game_number"] = group["game_date"].transform(lambda x: x.rank(method="first"))
+    df["days_rest"] = group["game_date"].transform(lambda x: x.diff().dt.days).fillna(0)
+    df["is_back_to_back"] = (group["game_date"].transform(lambda x: x.diff().dt.days).fillna(0) == 1).astype(int)
+    df["total_wins"] = group["win"].transform(lambda x: x.cumsum()).astype(int)
+    df["total_losses"] = (df["game_number"] - df["total_wins"]).astype(int)
+    df["win_percentage"] = df["total_wins"] / df["game_number"]
 
     # Wins in the 5 prior games (excluding current; resets at start of each team-season)
-    box_score_df = add_rolling_sums(box_score_df, ["team_name", "season_year"], ["win"], 5)
-    box_score_df = add_rolling_sums(box_score_df, ["team_name", "season_year"], ["win"], 10)
-    box_score_df["win_percentage_last_5"] = (box_score_df["wins_last_5"] / (np.minimum(5, box_score_df["game_number"] - 1))).replace([np.inf, -np.inf], 0).fillna(0)
-    box_score_df["win_percentage_last_10"] = (box_score_df["wins_last_10"] / (np.minimum(10, box_score_df["game_number"] - 1))).replace([np.inf, -np.inf], 0).fillna(0)
+    win_cols = ["win_percentage"]
+    for window_size in rolling_window_size:
+        df = add_rolling_sums(df, group_cols, ["win"], window_size)
+        df[f"win_percentage_last_{window_size}"] = (
+            (df[f"wins_last_{window_size}"] / (np.minimum(window_size, df["game_number"] - 1))).replace([np.inf, -np.inf], 0).fillna(0)
+            )
+        win_cols.extend([f"wins_last_{window_size}", f"win_percentage_last_{window_size}"])
 
-#%%
-    # Transformed Statistics
-    # - differentials for 
-    #       'pts', "ast", "tov", "blk", "blka", "fgm", "fga"
-    #       'ftm', "fta", "pf", "pfd', "stl", "oreb", "dreb",
-    #       "fg3m", "fg3a', 'days_rest', "win_percentage", 
-    #       "wins_last_5", "wins_last_10", "win_percentage_last_5", 
-    #       "win_percentage_last_10"
-    # 
-
+    # Calculate dfferentials for individual game stats
     cols_to_diff = ['pts', "ast", "tov", "blk", 
                     "blka", "fgm", "fga", "ftm", 
                     "fta", "pf", "pfd", "stl", 
-                    "oreb", "dreb", "fg3m", "fg3a", 
-                    'days_rest', "win_percentage", 
-                    "wins_last_5", "wins_last_10", 
-                    "win_percentage_last_5", "win_percentage_last_10"]
-    diff_df = box_score_df.groupby("game_id")[["game_id"] + cols_to_diff].apply(calc_diffs, cols=cols_to_diff).reset_index(level=0, drop=True).reindex(box_score_df.index)
+                    "oreb", "dreb", "reb", "fg3m", "fg3a", 
+                    'days_rest'] + win_cols
+    diff_df = df.groupby("game_id")[["game_id"] + cols_to_diff].apply(calc_diffs, cols=cols_to_diff).reset_index(level=0, drop=True).reindex(df.index)
 
-    diff_cols = [col for col in diff_df.columns if col not in box_score_df.columns]
-    box_score_df = pd.concat([box_score_df, diff_df[diff_cols]], axis=1)
-#%%
-    # By season stats
-    # - rolling averages past __ games
-    # - pace ranking
-    #     - shots per 
-    #     - possessions per 
-    #     - points per 
-    #     - etc.
-    # - win/loss percentage
-    # - points average
-    # - point differential compared to team average 
-    group = box_score_df.groupby(["team_name", "season_year"])
-    group_cols = ["team_name", "season_year"]
-    cols_to_avg = ["pts", "ast", "tov", "blk", "blka", 
-             "fgm", "fga", "ftm", "fta", 
-             "pf", "pfd", "stl", "reb", 
-             "oreb", "dreb", "fg3m", "fg3a",
-             "pace"] + diff_cols
+    diff_cols = [col for col in diff_df.columns if col not in df.columns]
+    df = pd.concat([df, diff_df[diff_cols]], axis=1)
 
-    # box_score_df = add_rolling_averages(box_score_df, group_cols, cols_to_avg, 5)
-    box_score_df = add_rolling_averages(box_score_df, group_cols, cols_to_avg, 10)
-    box_score_df = add_expanding_averages(box_score_df, group_cols, cols_to_avg)
+    # Calculate rolling and expanding averages for seasons stats
+    cols_to_avg = [c for c in cols_to_diff if c != "days_rest"] + ["pace"] + diff_cols
+    
+    for window_size in rolling_window_size:
+        df = add_rolling_averages(df, group_cols, cols_to_avg, window_size)
 
+    df = add_expanding_averages(df, group_cols, cols_to_avg)
 
     # Can not diff pace on a per game basis because it is the same for both teams, but we can diff the average and rolling average pace to get a better idea of team diffs
-    pace_cols = [col for col in box_score_df.columns if "pace_" in col]
-    pace_diff_df = box_score_df.groupby("game_id")[pace_cols].apply(calc_diffs, cols=pace_cols).reset_index(level=0, drop=True).reindex(box_score_df.index)
-    pace_diff_cols = [col for col in pace_diff_df.columns if col not in box_score_df.columns]
-    box_score_df = pd.concat([box_score_df, pace_diff_df[pace_diff_cols]], axis=1)
+    pace_cols = [col for col in df.columns if "pace_" in col]
+    pace_diff_df = df.groupby("game_id")[pace_cols].apply(calc_diffs, cols=pace_cols).reset_index(level=0, drop=True).reindex(df.index)
+    pace_diff_cols = [col for col in pace_diff_df.columns if col not in df.columns]
+
+    df = pd.concat([df, pace_diff_df[pace_diff_cols]], axis=1)
+
+    # Throwing out the games where it is the first game of the season for either team. This is because diff stats are not meaninful if one team has played a game and another hasnt
+    first_game_idx = df[df["game_number"] == 1].index
+    df = df.drop(first_game_idx).reset_index(drop=True)
+
+    return df
+
+
+def get_processed_box_score_df(engine = None, query = None, rolling_window_size = [10]):
+    if engine is None:
+        engine = default_engine
+
+    if query is None:
+            query = """
+                WITH base AS (
+                    SELECT
+                        tbs.*,
+                        g.season_year,
+                        g.game_date,
+                        g.minutes_played,
+                        g.neutral_site,
+                        CASE WHEN tbs.is_home THEN g.away_team_id ELSE g.home_team_id END AS opponent_team_id
+                    FROM team_box_score tbs
+                    JOIN game g ON tbs.game_id = g.game_id
+                )
+                SELECT
+                    t.team_name,
+                    opp.team_name  AS opponent_name,
+                    tbs_opp.pts    AS opponent_pts,
+                    base.*
+                FROM base
+                JOIN team t ON base.team_id = t.team_id
+                LEFT JOIN team opp ON opp.team_id = base.opponent_team_id
+                LEFT JOIN team_box_score tbs_opp ON tbs_opp.game_id = base.game_id AND tbs_opp.team_id = base.opponent_team_id
+            """
+
+    box_score_df = pd.read_sql(query, engine)
+
+    # Earlier game first, last game last (per team per season) so rolling/rank are in date order
+    box_score_df = box_score_df.sort_values(by=["team_name", "season_year", "game_date"]).reset_index(drop=True)
+    box_score_df = pipeline(box_score_df)
+
+    return box_score_df
+
+    
+if __name__ == "__main__":
+    box_score_df = get_processed_box_score_df()
+
+    # query = """
+    #     WITH base AS (
+    #         SELECT
+    #             tbs.*,
+    #             g.season_year,
+    #             g.game_date,
+    #             g.minutes_played,
+    #             g.neutral_site,
+    #             CASE WHEN tbs.is_home THEN g.away_team_id ELSE g.home_team_id END AS opponent_team_id
+    #         FROM team_box_score tbs
+    #         JOIN game g ON tbs.game_id = g.game_id
+    #     )
+    #     SELECT
+    #         t.team_name,
+    #         opp.team_name  AS opponent_name,
+    #         tbs_opp.pts    AS opponent_pts,
+    #         base.*
+    #     FROM base
+    #     JOIN team t ON base.team_id = t.team_id
+    #     LEFT JOIN team opp ON opp.team_id = base.opponent_team_id
+    #     LEFT JOIN team_box_score tbs_opp ON tbs_opp.game_id = base.game_id AND tbs_opp.team_id = base.opponent_team_id
+    # """
+    # box_score_df = pd.read_sql(query, default_engine)
+
+
+    # # Earlier game first, last game last (per team per season) so rolling/rank are in date order
+    # box_score_df = box_score_df.sort_values(by=["team_name", "season_year", "game_date"]).reset_index(drop=True)
+
+    # box_score_df = pipeline(box_score_df)
+#     # Game number and days rest
+#     group = box_score_df.groupby(["team_name", "season_year"])
+#     box_score_df["game_number"] = group["game_date"].transform(lambda x: x.rank(method="first"))
+#     box_score_df["days_rest"] = group["game_date"].transform(lambda x: x.diff().dt.days).fillna(0)
+#     box_score_df["is_back_to_back"] = (group["game_date"].transform(lambda x: x.diff().dt.days).fillna(0) == 1).astype(int)
+#     box_score_df["total_wins"] = group["win"].transform(lambda x: x.cumsum()).astype(int)
+#     box_score_df["total_losses"] = (box_score_df["game_number"] - box_score_df["total_wins"]).astype(int)
+#     box_score_df["win_percentage"] = box_score_df["total_wins"] / box_score_df["game_number"]
+
+#     # Wins in the 5 prior games (excluding current; resets at start of each team-season)
+#     box_score_df = add_rolling_sums(box_score_df, ["team_name", "season_year"], ["win"], 5)
+#     box_score_df = add_rolling_sums(box_score_df, ["team_name", "season_year"], ["win"], 10)
+#     box_score_df["win_percentage_last_5"] = (box_score_df["wins_last_5"] / (np.minimum(5, box_score_df["game_number"] - 1))).replace([np.inf, -np.inf], 0).fillna(0)
+#     box_score_df["win_percentage_last_10"] = (box_score_df["wins_last_10"] / (np.minimum(10, box_score_df["game_number"] - 1))).replace([np.inf, -np.inf], 0).fillna(0)
+
+# #%%
+#     # Transformed Statistics
+#     # - differentials for 
+#     #       'pts', "ast", "tov", "blk", "blka", "fgm", "fga"
+#     #       'ftm', "fta", "pf", "pfd', "stl", "oreb", "dreb",
+#     #       "fg3m", "fg3a', 'days_rest', "win_percentage", 
+#     #       "wins_last_5", "wins_last_10", "win_percentage_last_5", 
+#     #       "win_percentage_last_10"
+#     # 
+
+#     cols_to_diff = ['pts', "ast", "tov", "blk", 
+#                     "blka", "fgm", "fga", "ftm", 
+#                     "fta", "pf", "pfd", "stl", 
+#                     "oreb", "dreb", "fg3m", "fg3a", 
+#                     'days_rest', "win_percentage", 
+#                     "wins_last_5", "wins_last_10", 
+#                     "win_percentage_last_5", "win_percentage_last_10"]
+#     diff_df = box_score_df.groupby("game_id")[["game_id"] + cols_to_diff].apply(calc_diffs, cols=cols_to_diff).reset_index(level=0, drop=True).reindex(box_score_df.index)
+
+#     diff_cols = [col for col in diff_df.columns if col not in box_score_df.columns]
+#     box_score_df = pd.concat([box_score_df, diff_df[diff_cols]], axis=1)
+# #%%
+#     # By season stats
+#     # - rolling averages past __ games
+#     # - pace ranking
+#     #     - shots per 
+#     #     - possessions per 
+#     #     - points per 
+#     #     - etc.
+#     # - win/loss percentage
+#     # - points average
+#     # - point differential compared to team average 
+#     group = box_score_df.groupby(["team_name", "season_year"])
+#     group_cols = ["team_name", "season_year"]
+#     cols_to_avg = ["pts", "ast", "tov", "blk", "blka", 
+#              "fgm", "fga", "ftm", "fta", 
+#              "pf", "pfd", "stl", "reb", 
+#              "oreb", "dreb", "fg3m", "fg3a",
+#              "pace"] + diff_cols
+
+#     # box_score_df = add_rolling_averages(box_score_df, group_cols, cols_to_avg, 5)
+#     box_score_df = add_rolling_averages(box_score_df, group_cols, cols_to_avg, 10)
+#     box_score_df = add_expanding_averages(box_score_df, group_cols, cols_to_avg)
+
+
+#     # Can not diff pace on a per game basis because it is the same for both teams, but we can diff the average and rolling average pace to get a better idea of team diffs
+#     pace_cols = [col for col in box_score_df.columns if "pace_" in col]
+#     pace_diff_df = box_score_df.groupby("game_id")[pace_cols].apply(calc_diffs, cols=pace_cols).reset_index(level=0, drop=True).reindex(box_score_df.index)
+#     pace_diff_cols = [col for col in pace_diff_df.columns if col not in box_score_df.columns]
+#     box_score_df = pd.concat([box_score_df, pace_diff_df[pace_diff_cols]], axis=1)
 
 #%%
     unneeded_identifying_cols = ['team_name','opponent_name', 'opponent_pts', 'team_box_id', 
@@ -533,19 +627,6 @@ team diff rolling averages (past 5 games):
     'diff_pf_rolling_mean_prev_5', 'diff_pfd_rolling_mean_prev_5', 'diff_pts_rolling_mean_prev_5',
     'diff_stl_rolling_mean_prev_5', 'diff_tov_rolling_mean_prev_5',
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 """
+
+

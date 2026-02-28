@@ -46,12 +46,6 @@ default_engine = get_engine()
 #          w_expand AS (w ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW);
 # For point_diff: define in CTE (pts - opponent_pts), then AVG(point_diff) OVER w_roll5 etc.
 
-
-def running_averages(df, window_size):
-    return df.rolling(window=window_size).mean()
-
-#%%
-
 identifying_cols = ["team_name", "season_year", "opponent_name", "team_box_id", 'game_id', 'team_id', 'game_date', 'neutral_site', 'opponent_team_id']
 
 in_game_stats_cols = ['pts', 'fgm', 'fga', 'fg_pct', 'fg3m', 'fg3a', 'fg3_pct', 'ftm',
@@ -203,7 +197,7 @@ def get_processed_box_score_df(engine = None, query = None, rolling_window_size 
 
     # Earlier game first, last game last (per team per season) so rolling/rank are in date order
     box_score_df = box_score_df.sort_values(by=["team_name", "season_year", "game_date"]).reset_index(drop=True)
-    box_score_df = pipeline(box_score_df)
+    box_score_df = pipeline(box_score_df, rolling_window_size, inplace = False)
 
     return box_score_df
 
@@ -211,102 +205,6 @@ def get_processed_box_score_df(engine = None, query = None, rolling_window_size 
 if __name__ == "__main__":
     box_score_df = get_processed_box_score_df()
 
-    # query = """
-    #     WITH base AS (
-    #         SELECT
-    #             tbs.*,
-    #             g.season_year,
-    #             g.game_date,
-    #             g.minutes_played,
-    #             g.neutral_site,
-    #             CASE WHEN tbs.is_home THEN g.away_team_id ELSE g.home_team_id END AS opponent_team_id
-    #         FROM team_box_score tbs
-    #         JOIN game g ON tbs.game_id = g.game_id
-    #     )
-    #     SELECT
-    #         t.team_name,
-    #         opp.team_name  AS opponent_name,
-    #         tbs_opp.pts    AS opponent_pts,
-    #         base.*
-    #     FROM base
-    #     JOIN team t ON base.team_id = t.team_id
-    #     LEFT JOIN team opp ON opp.team_id = base.opponent_team_id
-    #     LEFT JOIN team_box_score tbs_opp ON tbs_opp.game_id = base.game_id AND tbs_opp.team_id = base.opponent_team_id
-    # """
-    # box_score_df = pd.read_sql(query, default_engine)
-
-
-    # # Earlier game first, last game last (per team per season) so rolling/rank are in date order
-    # box_score_df = box_score_df.sort_values(by=["team_name", "season_year", "game_date"]).reset_index(drop=True)
-
-    # box_score_df = pipeline(box_score_df)
-#     # Game number and days rest
-#     group = box_score_df.groupby(["team_name", "season_year"])
-#     box_score_df["game_number"] = group["game_date"].transform(lambda x: x.rank(method="first"))
-#     box_score_df["days_rest"] = group["game_date"].transform(lambda x: x.diff().dt.days).fillna(0)
-#     box_score_df["is_back_to_back"] = (group["game_date"].transform(lambda x: x.diff().dt.days).fillna(0) == 1).astype(int)
-#     box_score_df["total_wins"] = group["win"].transform(lambda x: x.cumsum()).astype(int)
-#     box_score_df["total_losses"] = (box_score_df["game_number"] - box_score_df["total_wins"]).astype(int)
-#     box_score_df["win_percentage"] = box_score_df["total_wins"] / box_score_df["game_number"]
-
-#     # Wins in the 5 prior games (excluding current; resets at start of each team-season)
-#     box_score_df = add_rolling_sums(box_score_df, ["team_name", "season_year"], ["win"], 5)
-#     box_score_df = add_rolling_sums(box_score_df, ["team_name", "season_year"], ["win"], 10)
-#     box_score_df["win_percentage_last_5"] = (box_score_df["wins_last_5"] / (np.minimum(5, box_score_df["game_number"] - 1))).replace([np.inf, -np.inf], 0).fillna(0)
-#     box_score_df["win_percentage_last_10"] = (box_score_df["wins_last_10"] / (np.minimum(10, box_score_df["game_number"] - 1))).replace([np.inf, -np.inf], 0).fillna(0)
-
-# #%%
-#     # Transformed Statistics
-#     # - differentials for 
-#     #       'pts', "ast", "tov", "blk", "blka", "fgm", "fga"
-#     #       'ftm', "fta", "pf", "pfd', "stl", "oreb", "dreb",
-#     #       "fg3m", "fg3a', 'days_rest', "win_percentage", 
-#     #       "wins_last_5", "wins_last_10", "win_percentage_last_5", 
-#     #       "win_percentage_last_10"
-#     # 
-
-#     cols_to_diff = ['pts', "ast", "tov", "blk", 
-#                     "blka", "fgm", "fga", "ftm", 
-#                     "fta", "pf", "pfd", "stl", 
-#                     "oreb", "dreb", "fg3m", "fg3a", 
-#                     'days_rest', "win_percentage", 
-#                     "wins_last_5", "wins_last_10", 
-#                     "win_percentage_last_5", "win_percentage_last_10"]
-#     diff_df = box_score_df.groupby("game_id")[["game_id"] + cols_to_diff].apply(calc_diffs, cols=cols_to_diff).reset_index(level=0, drop=True).reindex(box_score_df.index)
-
-#     diff_cols = [col for col in diff_df.columns if col not in box_score_df.columns]
-#     box_score_df = pd.concat([box_score_df, diff_df[diff_cols]], axis=1)
-# #%%
-#     # By season stats
-#     # - rolling averages past __ games
-#     # - pace ranking
-#     #     - shots per 
-#     #     - possessions per 
-#     #     - points per 
-#     #     - etc.
-#     # - win/loss percentage
-#     # - points average
-#     # - point differential compared to team average 
-#     group = box_score_df.groupby(["team_name", "season_year"])
-#     group_cols = ["team_name", "season_year"]
-#     cols_to_avg = ["pts", "ast", "tov", "blk", "blka", 
-#              "fgm", "fga", "ftm", "fta", 
-#              "pf", "pfd", "stl", "reb", 
-#              "oreb", "dreb", "fg3m", "fg3a",
-#              "pace"] + diff_cols
-
-#     # box_score_df = add_rolling_averages(box_score_df, group_cols, cols_to_avg, 5)
-#     box_score_df = add_rolling_averages(box_score_df, group_cols, cols_to_avg, 10)
-#     box_score_df = add_expanding_averages(box_score_df, group_cols, cols_to_avg)
-
-
-#     # Can not diff pace on a per game basis because it is the same for both teams, but we can diff the average and rolling average pace to get a better idea of team diffs
-#     pace_cols = [col for col in box_score_df.columns if "pace_" in col]
-#     pace_diff_df = box_score_df.groupby("game_id")[pace_cols].apply(calc_diffs, cols=pace_cols).reset_index(level=0, drop=True).reindex(box_score_df.index)
-#     pace_diff_cols = [col for col in pace_diff_df.columns if col not in box_score_df.columns]
-#     box_score_df = pd.concat([box_score_df, pace_diff_df[pace_diff_cols]], axis=1)
-
-#%%
     unneeded_identifying_cols = ['team_name','opponent_name', 'opponent_pts', 'team_box_id', 
                                  'game_id', 'team_id', 'season_year', 'game_date',  'neutral_site', 
                                  'opponent_team_id', 'game_number']
@@ -393,161 +291,10 @@ if __name__ == "__main__":
     for idx, val in corr["diff_pts"].sort_values().items():
     
         print(idx, round(val, 4))
-#%%
 
-
-
-
-
-
-    X_log_reg_numeric_cols = ["diff_win_percentage", "diff_wins_last_10", "dreb_average", "diff_blk_average", "diff_days_rest",  "stl_average"]
-    X_log_reg_categorical_cols = ["is_home"]
-
-    y_log_reg_col = ["win"]
-
-
-    scaler = StandardScaler()
-
+# %%
 
     
-    scaled = pd.DataFrame(
-        scaler.fit_transform(X[X_log_reg_numeric_cols]),
-        columns=X_log_reg_numeric_cols,
-        index=X.index,
-    )
-    X_log_reg = pd.concat([scaled, X[X_log_reg_categorical_cols].astype("int")], axis=1)
-
-
-    X_train, X_test, y_train, y_test = train_test_split(X_log_reg, y, test_size=0.4, random_state=42)
-
-    model = LogisticRegression()
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
-    print(classification_report(y_test, y_pred))
-
-    # Linear part: z = intercept + sum(coef_i * x_i)
-    feats = X_train.columns.tolist()
-    coefs = model.coef_[0]
-    intercept = model.intercept_[0]
-
-    print("z = {:.4f}".format(intercept), end="")
-    for name, c in zip(feats, coefs):
-        sign = "+" if c >= 0 else ""
-        print(" {} {:.4f}*{}".format(sign, c, name), end="")
-    print()
-    print("P(win) = 1 / (1 + exp(-z))")
-# z = -0.2337 + 1.9248*diff_win_percentage  -0.5559*diff_wins_last_10 + 0.0178*dreb_average  -0.0493*diff_blk_average + 0.1163*diff_days_rest + 0.0220*stl_average + 0.4587*is_home
-# P(win) = 1 / (1 + exp(-z))
-
-
-# %%
-
-    import xgboost as xgb
-    import multiprocessing
-    from sklearn.metrics import accuracy_score
-
-    from sklearn.model_selection import GridSearchCV
-
-    x_cols = [col for col in box_score_df.columns if col not in unneeded_cols]
-    y_cols = ["win", "diff_pts"]
-    y_col = ["win"]
-    modeling_df = box_score_df[x_cols + y_cols]
-
-
-
-    X = box_score_df[x_cols]
-    y = box_score_df["win"].astype(int)
-
-
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-
-
-    # Make sure the number of threads is balanced.
-    xgb_model = xgb.XGBClassifier(
-        n_jobs=multiprocessing.cpu_count() // 2, tree_method="hist"
-    )
-    clf = GridSearchCV(
-        xgb_model,
-        {"max_depth": [5, 6, 7, 8, 9, 10, 12], "n_estimators": [10, 15, 16, 17], "gamma": [ 11, 11.5, 11.25, 12]},
-        verbose=1,
-        n_jobs=2,
-    )
-    clf.fit(X_train, y_train)
-    print(clf.best_score_)
-    print(clf.best_params_)
-    y_pred = clf.predict(X_test)
-    # Evaluate the model
-    accuracy = accuracy_score(y_test, y_pred)
-    print(f"Accuracy: {accuracy * 100:.2f}%")
-
-    # Feature importance (XGBoost) and optional permutation importance
-    from sklearn.inspection import permutation_importance
-    from matplotlib import pyplot as plt
-
-    best = clf.best_estimator_
-    feature_names = X_train.columns
-    importances = best.feature_importances_
-    sorted_idx = importances.argsort()
-    plt.figure(figsize=(8, 20))
-    plt.barh(feature_names[sorted_idx], importances[sorted_idx])
-    plt.xlabel("XGBoost feature importance")
-    plt.tight_layout()
-    plt.show()
-
-    # Permutation importance on test set (optional; slower)
-    perm = permutation_importance(best, X_test, y_test, n_repeats=20, random_state=42, n_jobs=-1)
-    sorted_idx_perm = perm.importances_mean.argsort()
-    perm_importance_df = pd.DataFrame({
-        "feature": feature_names[sorted_idx_perm],
-        "permutation_importance_mean": perm.importances_mean[sorted_idx_perm],
-    })
-    plt.figure(figsize=(8, 20))
-    plt.barh(feature_names[sorted_idx_perm], perm.importances_mean[sorted_idx_perm])
-    plt.xlabel("Permutation importance (test set)")
-    plt.tight_layout()
-    plt.show()
-
-
-
-#%%
-teams_query = """
-    SELECT t. team_id, team_name
-    FROM team t
-    """
-teams = pd.read_sql(teams_query, default_engine)
-print(teams.head())
-
-team_box_score_query = """
-    SELECT *
-    FROM team_box_score tbs
-    """
-team_box_score = pd.read_sql(team_box_score_query, default_engine)
-print(team_box_score.head())
-
-df = pd.merge(teams[["team_id", "team_name"]], team_box_score, on='team_id', how='left')
-print(df.head())
-
-"""
-Team stat:
-    - rolling averages past __ games
-    - league rank prior ___ games
-    - pace ranking
-        - shots per 
-
-
-
-"""
-# %%
-
-no_home_game_ids = []
-g = df.groupby('game_id')
-for game, group in g:
-    if group["is_home"].sum()==0:
-        # no_home_game_ids.append
-        # (group["game_id"].iloc[0])
-        no_home_game_ids.append(group["game_id"].iloc[0])
-print(no_home_game_ids)
-# %%
 
 
 """

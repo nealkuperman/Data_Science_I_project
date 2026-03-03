@@ -1,0 +1,173 @@
+#%%
+import sys
+from pathlib import Path
+
+_project_root = Path(__file__).resolve().parent.parent
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
+
+import pandas as pd
+import numpy as np
+from matplotlib import pyplot as plt
+from sklearn.model_selection import train_test_split
+import joblib
+from scripts.logistic_reg_models import (
+    PLSTransformer,
+    LogisticRegressor,
+    PCALogisticRegressor,
+    PLSLogisticRegressor,
+)
+from source.db import get_engine
+from scripts.get_data_from_db import *
+from scripts.preprocessing import *
+
+_data_dir = _project_root / "data"
+_cleaned_data_dir = _project_root / "cleaned_data"
+_plots_dir = _project_root / "figures"
+_models_dir = _project_root / "models"
+default_engine = get_engine()
+
+RANDOM_STATE = 42
+
+
+
+
+if __name__ == "__main__":
+    box_score_df = pd.read_csv(_cleaned_data_dir / "cleaned_data_2_21_26.csv")
+
+
+    unneeded_identifying_cols = ['team_name','opponent_name', 'opponent_pts', 'team_box_id', 
+                                    'game_id', 'team_id', 'season_year', 'game_date',  'neutral_site', 
+                                    'opponent_team_id', 'game_number']
+
+    unneeded_in_game_stats_cols = ['win', 'pts', 'fgm', 'fga', 'fg_pct', 'fg3m', 'fg3a', 'fg3_pct', 
+                                    'ftm', 'fta', 'ft_pct', 'oreb', 'dreb', 'reb', 'ast', 'tov', 
+                                    'stl', 'blk', 'blka', 'pf', 'pfd', 'pace', 'poss', 'minutes_played']
+
+    unneeded_team_summary_cols = ['total_wins', 'total_losses', 'diff_pts', 'diff_ast', 'diff_tov',
+                                    'total_wins', 'total_losses', 'diff_pts', 'diff_ast', 'diff_tov',
+                                    'diff_blk', 'diff_blka', 'diff_fgm', 'diff_fga', 'diff_ftm',
+                                    'diff_fta', 'diff_pf', 'diff_pfd', 'diff_stl', 'diff_oreb', 'diff_dreb',
+                                    'diff_fg3m', 'diff_fg3a', "diff_reb", "wins_last_10_average", "wins_last_5_average",
+                                    "win_percentage_average", "win_percentage_last_10_average", 
+                                    "wins_last_10_rolling_mean_prev_10", "win_percentage_rolling_mean_prev_10",
+                                    "win_percentage_last_10_rolling_mean_prev_10", "diff_wins_last_10", "wins_last_10"] 
+
+    unneeded_diff_cols = ['diff_days_rest_average', 'diff_days_rest_rolling_mean_prev_5', 'diff_win_percentage_average',
+                            'diff_win_percentage_last_10_average', 'diff_win_percentage_last_10_rolling_mean_prev_5',
+                            'diff_win_percentage_last_5_average', 'diff_win_percentage_last_5_rolling_mean_prev_5',
+                            'diff_win_percentage_rolling_mean_prev_5', 'diff_wins_last_10_average',
+                            'diff_wins_last_10_rolling_mean_prev_5', 'diff_wins_last_5_average',
+                            'diff_wins_last_5_rolling_mean_prev_5', "diff_win_percentage_rolling_mean_prev_10"]
+
+    col_prefixes = ['diff_days_rest_rolling_mean_prev_', 'diff_win_percentage_last_10_rolling_mean_prev_', 'diff_win_percentage_last_5_rolling_mean_prev_'
+    'diff_win_percentage_rolling_mean_prev_', 'diff_wins_last_10_rolling_mean_prev_', 'diff_wins_last_5_rolling_mean_prev_']
+
+    cols_to_ignore = []
+    for prefix in col_prefixes:
+        cols_to_ignore.extend([col for col in box_score_df.columns if col.startswith(prefix)])
+
+    unneeded_cols = unneeded_identifying_cols + unneeded_in_game_stats_cols + unneeded_team_summary_cols + unneeded_diff_cols + cols_to_ignore
+
+    x_cols = [col for col in box_score_df.columns if col not in unneeded_cols]
+    y_cols = ["win", "diff_pts"]
+    y_col = ["win"]
+
+    X_log_reg_numeric_cols = [
+        'pace_average',
+        'blka_average',
+        'pfd_average',
+        'diff_fg3a_average',
+        'dreb_average',
+        'diff_ftm_average',
+        'diff_fgm_average',
+        'diff_pace_average',
+        'diff_days_rest',
+        'is_home',
+        'diff_pts_average',
+        'win_percentage_last_10',
+        'diff_win_percentage_last_10',
+        'win_percentage',
+        'diff_win_percentage'
+        ]
+
+
+    X = box_score_df[x_cols]
+    y = box_score_df["win"].astype(int)
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.3, random_state=RANDOM_STATE, stratify=y
+    )
+
+
+    # Manually filtered features
+    X_mf = box_score_df[X_log_reg_numeric_cols]
+    y_mf = box_score_df["win"].astype(int)
+    logistic_param_grid={"lr__C": range(1, 100)}
+    X_train_mf = X_train[X_log_reg_numeric_cols]
+    X_test_mf = X_test[X_log_reg_numeric_cols]
+    y_train_mf = y_train
+    y_test_mf = y_test
+
+
+    log_reg_clf = LogisticRegressor()
+    log_reg_clf.run(X_train_mf, y_train_mf, X_test_mf, y_test_mf, param_grid=logistic_param_grid)
+
+    log_reg_clf.plt_confusion_matrix(X_test_mf, y_test_mf, save_path=_plots_dir / "log_reg_test_confusion_matrix.png")
+    log_reg_clf.plt_confusion_matrix(X_train_mf, y_train_mf, save_path=_plots_dir / "log_reg_train_confusion_matrix.png")
+
+
+    # DataFrame of coefficients and feature names, sorted by coefficient value
+    coef_df = pd.DataFrame({
+        "feature": X_train_mf.columns.tolist(),
+        "coef": log_reg_clf.clf.best_estimator_.named_steps["lr"].coef_[0],
+        'abs_coef': np.abs(log_reg_clf.clf.best_estimator_.named_steps["lr"].coef_[0])
+    }).sort_values("abs_coef", ascending=False)
+    coef_df
+
+
+    LOAD_MODELS = True
+    SAVE_MODELS = False
+
+    if LOAD_MODELS:
+        _project_root = Path(__file__).resolve().parent.parent
+        pls = joblib.load(_models_dir / "pls_logistic_regressor_60_component.joblib")
+    else:
+
+        param_grid = {
+            "pls__n_components": range(1, 60 + 1),
+            "logistic__C": np.logspace(-3, 3, 15),
+        }
+
+        pls = PLSLogisticRegressor(max_components=60)
+        pls.run(X_train, y_train, X_test, y_test, param_grid=param_grid, refit=True)
+        if SAVE_MODELS:
+            _models_dir.mkdir(parents=True, exist_ok=True)
+            joblib.dump(pls, _models_dir / "pls_logistic_regressor_60_component.joblib")
+
+    pls.plt_confusion_matrix(X_test, y_test, save_path=_plots_dir / "pls_test_confusion_matrix.png")
+    pls.plt_confusion_matrix(X_train, y_train, save_path=_plots_dir / "pls_train_confusion_matrix.png")
+    pls.plot_cv_vs_components(save_path=_plots_dir / "pls_cv_vs_components.png")
+    pls.print_logistic_regression_equation(X_train, y_train)
+
+
+    if LOAD_MODELS:
+        pca = joblib.load(_models_dir / "pca_logistic_regressor_60_component.joblib")
+    else:
+        param_grid = {
+            "pca__n_components": range(1, 60 + 1),
+            "logistic__C": np.logspace(-3, 3, 15),
+        }
+        pca = PCALogisticRegressor(max_components=60)
+        pca.run(X_train, y_train, X_test, y_test, param_grid=param_grid, refit=True)
+        if SAVE_MODELS:
+            _models_dir.mkdir(parents=True, exist_ok=True)
+            joblib.dump(pca, _models_dir / "pca_logistic_regressor_60_component.joblib")
+    
+    pca.print_logistic_regression_equation(X_train, y_train)
+    pca.plt_confusion_matrix(X_test, y_test, save_path=_plots_dir / "pca_test_confusion_matrix.png")
+    pca.plt_confusion_matrix(X_train, y_train, save_path=_plots_dir / "pca_train_confusion_matrix.png")
+    pca.plot_cv_vs_components(save_path=_plots_dir / "pca_cv_vs_components.png")
+
+
+# %%

@@ -2,11 +2,6 @@
 import sys
 from pathlib import Path
 import pandas as pd
-from sympy.printing.pretty.pretty_symbology import G
-from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report
-from sklearn.preprocessing import StandardScaler
 import numpy as np
 
 # When run by path (e.g. python project/source/load_team_data.py), project root may not be on path.

@@ -11,7 +11,7 @@ import xgboost as xgb
 import shap
 import joblib
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, ConfusionMatrixDisplay
+from sklearn.metrics import accuracy_score, confusion_matrix, ConfusionMatrixDisplay
 from sklearn.model_selection import GridSearchCV
 from sklearn.inspection import permutation_importance
 
@@ -26,6 +26,7 @@ from scripts.preprocessing import *
 
 _data_dir = _project_root / "data"
 _cleaned_data_dir = _project_root / "cleaned_data"
+_models_dir = _project_root / "models"
 default_engine = get_engine()
 
 
@@ -34,10 +35,7 @@ box_score_df = pd.read_csv(_cleaned_data_dir / "cleaned_data_2_21_26.csv")
 
 #%%
 
-
-BEST_PARAMS_DEFAULT = {'gamma': 0.2, 'learning_rate': 0.15, 'max_depth': 5, 'n_estimators': 175}
 BEST_PARAMS_DEFAULT = {'gamma': 0.1, 'learning_rate': 0.125, 'max_depth': 7, 'n_estimators': 200}
-
 
 DEFAULT_PARAM_GRID = {
         "max_depth": [5, 6, 7, 8],
@@ -50,6 +48,7 @@ DEFAULT_PARAM_GRID = {
 def run_CV_xgboost(xgb_model, X_train, y_train, param_grid = None, cv = 5, save_model= False):
     if param_grid is None:
         param_grid = DEFAULT_PARAM_GRID
+   
     clf = GridSearchCV(
         xgb_model,
         param_grid,
@@ -155,7 +154,7 @@ x_cols = [
 
 
 
-
+RERUN_GRID_SEARCH = False
 
 x_cols = [col for col in box_score_df.columns if col not in unneeded_cols]
 y_cols = ["win", "diff_pts"]
@@ -169,40 +168,49 @@ y = box_score_df["win"].astype(int)
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42, stratify=y)
 
 
-# Make sure the number of threads is balanced.
+# ================================================================
+# Train the model
+# ================================================================
 xgb_model = xgb.XGBClassifier(
     n_jobs=multiprocessing.cpu_count() // 2, tree_method="hist"
 )
 
-# clf = run_CV_xgboost(xgb_model, X_train, y_train, param_grid=DEFAULT_PARAM_GRID, cv=5, save_model=False)
-# model = clf.best_estimator_
-model = train_xgboost(xgb_model, X_train, y_train, params=BEST_PARAMS_DEFAULT, cv=5, save_model=False)
+if RERUN_GRID_SEARCH:
+    clf = run_CV_xgboost(xgb_model, X_train, y_train, param_grid=DEFAULT_PARAM_GRID, cv=5, save_model=False)
+    model = clf.best_estimator_
+else:
+    clf = joblib.load(_models_dir / "xgb_grid_search.joblib")
+    model = train_xgboost(xgb_model, X_train, y_train, params=BEST_PARAMS_DEFAULT, cv=5, save_model=False)
 
-y_pred = model.predict(X_test)
+# ================================================================
 # Evaluate the model
+# ================================================================
+y_pred = model.predict(X_test)
 accuracy = accuracy_score(y_test, y_pred)
 print(f"Accuracy: {accuracy * 100:.2f}%")
 
-
 cm = confusion_matrix(y_test, y_pred)
-labels = sorted(pd.unique(y_test))  # e.g. [0, 1] or use ["loss", "win"] if you prefer
+labels = sorted(pd.unique(y_test)) 
 confusion_df = pd.DataFrame(cm, index=labels, columns=labels)
 confusion_df.index.name = "Truth"
 confusion_df.columns.name = "Predicted"
 print(confusion_df)
-# Optional: plot with ConfusionMatrixDisplay
+
 disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=labels)
 disp.plot(cmap=plt.cm.Blues)
 plt.title("Full Feature Model: Confusion matrix")
 plt.show()
 
-# Feature importance (XGBoost) and optional permutation importance
+# ================================================================
+# Feature importance on test set
+# ================================================================
+IMPORTANCE_THRESHOLD = 1e-5
 
 best = model
 feature_names = X_train.columns
 importances = best.feature_importances_
 importance_df = pd.DataFrame({"feature": feature_names, "importance": importances})
-importance_filtered = importance_df[importance_df["importance"] >= 1e-5].sort_values(
+importance_filtered = importance_df[importance_df["importance"] >= IMPORTANCE_THRESHOLD].sort_values(
     by="importance", ascending=True
 )
 plt.figure(figsize=(8, max(6, len(importance_filtered) * 0.35)))
@@ -210,7 +218,6 @@ plt.barh(importance_filtered["feature"], importance_filtered["importance"])
 plt.xlabel("XGBoost feature importance")
 plt.tight_layout()
 plt.show()
-
 
 important_features = importance_filtered["feature"].tolist()
 corr_important_features = X[important_features].corr()
@@ -221,9 +228,10 @@ sns.heatmap(corr_important_features, annot=True, fmt=".2f", cmap="RdBu_r", cente
 plt.tight_layout()
 plt.show()
 
-
-
-# Permutation importance on test set (optional; slower)
+# ================================================================
+# Permutation importance on test set
+# ================================================================
+PERMUTATION_IMPORTANCE_THRESHOLD = 1e-3
 perm = permutation_importance(best, X_test, y_test, n_repeats=20, random_state=42, n_jobs=-1)
 sorted_idx_perm = perm.importances_mean.argsort()
 perm_importance_df = pd.DataFrame({
@@ -231,7 +239,8 @@ perm_importance_df = pd.DataFrame({
     "permutation_importance_mean": perm.importances_mean[sorted_idx_perm],
 })
 perm_importance_filtered = perm_importance_df[
-    perm_importance_df["permutation_importance_mean"].abs() >= 1e-3
+    perm_importance_df["permutation_importance_mean"].abs() >= 
+    PERMUTATION_IMPORTANCE_THRESHOLD
 ].sort_values(by="permutation_importance_mean", ascending=True)
 
 plt.figure(figsize=(8, max(6, len(perm_importance_filtered) * 0.35)))
@@ -241,9 +250,9 @@ plt.title("Permutation importance of features")
 plt.tight_layout()
 plt.show()
 
-
-
+# ================================================================
 # Rerun with 10 most important features from permutation importance
+# ================================================================
 xgb_model_top = xgb.XGBClassifier(
     n_jobs=multiprocessing.cpu_count() // 2, tree_method="hist"
 )
@@ -257,23 +266,72 @@ y_pred_top = model_top.predict(X_test_top)
 accuracy_top = accuracy_score(y_test, y_pred_top)
 print(f"Accuracy: {accuracy_top * 100:.2f}%")
 
-
 cm = confusion_matrix(y_test, y_pred_top)
-labels = sorted(pd.unique(y_test))  # e.g. [0, 1] or use ["loss", "win"] if you prefer
+labels = sorted(pd.unique(y_test))  
 confusion_df = pd.DataFrame(cm, index=labels, columns=labels)
 confusion_df.index.name = "Truth"
 confusion_df.columns.name = "Predicted"
 print(confusion_df)
-# Optional: plot with ConfusionMatrixDisplay
+
 disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=labels)
 disp.plot(cmap=plt.cm.Blues)
 plt.title("Reduced Feature Model: Confusion matrix")
 plt.show()
 
+# ================================================================
+# Plot CV accuracy vs max_depth, one plot per n_estimators
+# ================================================================
+cv_res = clf.cv_results_
+results_df = pd.DataFrame({
+    "max_depth": np.asarray(cv_res["param_max_depth"], dtype=int),
+    "n_estimators": np.asarray(cv_res["param_n_estimators"], dtype=int),
+    "mean_test_score": cv_res["mean_test_score"],
+    "std_test_score": cv_res["std_test_score"],
+})
+
+n_vals = sorted(results_df["n_estimators"].unique())
+n_plots = len(n_vals)
+
+fig, axes = plt.subplots(
+    nrows=1,
+    ncols=n_plots,
+    figsize=(4 * n_plots, 4),
+    sharey=True,
+)
+
+# axes is 1D array if n_plots > 1, otherwise a single Axes
+if n_plots == 1:
+    axes = [axes]
+
+for ax, n in zip(axes, n_vals):
+    sub = results_df[results_df["n_estimators"] == n].sort_values("max_depth")
+    ax.errorbar(
+        sub["max_depth"],
+        sub["mean_test_score"],
+        yerr=sub["std_test_score"],
+        marker="o",
+        linestyle="-",
+    )
+    ax.set_title(f"n_estimators = {n}")
+    ax.set_xlabel("max_depth")
+    ax.grid(True, alpha=0.3)
+
+axes[0].set_ylabel("CV accuracy")
+fig.suptitle("XGBoost CV: accuracy vs max_depth by n_estimators", y=1.02)
+plt.tight_layout()
+plt.show()
 
 
-# lambda controls L2 regularization on leaf weights, encouraging small weights, while gamma controls the minimum loss reduction needed to make a split, penalizing the number of leaves
-
+# ================================================================
+# Plot distbrution of CV accuracy
+# ================================================================
+plt.figure(figsize=(6, 4))
+sns.histplot(data=results_df, x="mean_test_score", bins=20, kde=True)
+plt.xlabel("CV mean_test_score")
+plt.ylabel("Count")
+plt.title("Distribution of CV mean_test_score across XGBoost grid")
+plt.tight_layout()
+plt.show()
 # %%
 
 
@@ -302,4 +360,29 @@ plt.show()
 # np.abs(shap_values.sum(axis=1) + explanation.base_values - pred).max()# %%
 # shap.plots.beeswarm(explanation)
 
+# %%
+xgb_model_top = xgb.XGBClassifier(
+    n_jobs=multiprocessing.cpu_count() // 2, tree_method="hist"
+)
+X_train_top = X_train[top_features]
+X_test_top = X_test[top_features]
+clf_top = run_CV_xgboost(xgb_model_top, X_train_top, y_train, param_grid=DEFAULT_PARAM_GRID, cv=5, save_model=False)
+model_top = clf_top.best_estimator_
+# %%
+perm_top = permutation_importance(model_top, X_test_top, y_test, n_repeats=20, random_state=42, n_jobs=-1)
+sorted_idx_perm_top = perm_top.importances_mean.argsort()
+perm_importance_df_top = pd.DataFrame({
+    "feature": feature_names[sorted_idx_perm_top],
+    "permutation_importance_mean": perm_top.importances_mean[sorted_idx_perm_top],
+})
+perm_importance_filtered_top = perm_importance_df_top[
+    perm_importance_df["permutation_importance_mean"].abs() >= 
+    PERMUTATION_IMPORTANCE_THRESHOLD
+].sort_values(by="permutation_importance_mean", ascending=True)
+plt.figure(figsize=(8, max(6, len(perm_importance_filtered_top) * 0.35)))
+plt.barh(perm_importance_filtered_top["feature"], perm_importance_filtered_top["permutation_importance_mean"])
+plt.xlabel("Permutation importance (test set)")
+plt.title("Permutation importance of features")
+plt.tight_layout()
+plt.show()
 # %%

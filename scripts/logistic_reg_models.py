@@ -7,6 +7,7 @@ from matplotlib import pyplot as plt
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, ConfusionMatrixDisplay
+from sklearn.metrics import roc_curve, roc_auc_score
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
@@ -82,16 +83,41 @@ class LogisticRegressor:
 
         return self
     
-    def plt_confusion_matrix(self, X_test, y_test, save_path=None):
+    def plt_confusion_matrix(self, X_test, y_test, is_test=True, save_path=None):
         y_pred = self.predict(X_test)
         cm = confusion_matrix(y_test, y_pred, labels=[0,1])
         disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=[0,1])
         disp.plot(cmap=plt.cm.Blues)
-        plt.title("Confusion matrix (logistic regression)")
+        if is_test:
+            title = "Confusion matrix - Logistic Regression\nTest Set"
+        else:
+            title = "Confusion matrix - Logistic Regression\nTrain Set"
+        plt.title(title)
         if save_path is not None:
             plt.savefig(save_path)
         plt.show()
         return self
+
+    def plot_roc_curve(self, X, y, ax=None, label=None, save_path=None):
+        """Plot ROC curve and print AUC. Use ax to overlay multiple curves."""
+        proba = self.clf.predict_proba(X)[:, 1]
+        fpr, tpr, _ = roc_curve(y, proba)
+        auc = roc_auc_score(y, proba)
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(5, 5))
+        lbl = label or "Logistic Regression"
+        ax.plot(fpr, tpr, label=f"{lbl} (AUC = {auc:.3f})")
+        ax.plot([0, 1], [0, 1], "k--", alpha=0.5)
+        ax.set_xlabel("False Positive Rate")
+        ax.set_ylabel("True Positive Rate")
+        ax.legend(loc="lower right")
+        ax.set_title("ROC curve - Logistic Regression")
+        if save_path is not None:
+            plt.savefig(save_path)
+        if ax is None:
+            plt.tight_layout()
+            plt.show()
+        return ax
 
     def print_logistic_regression_equation(self, X_train):
         feats = X_train.columns.tolist()
@@ -202,9 +228,9 @@ class PCALogisticRegressor:
         disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=[0,1])
         disp.plot(cmap=plt.cm.Blues)
         if is_test:
-            title = "Confusion matrix (PCA + Logistic Regression) (test)"
+            title = "Confusion matrix - PCA + Logistic Regression\nTest Set"
         else:
-            title = "Confusion matrix (PCA + Logistic Regression) (train)"
+            title = "Confusion matrix - PCA + Logistic Regression\nTrain Set"
         plt.title(title)
         if save_path is not None:
             plt.savefig(save_path)
@@ -217,18 +243,11 @@ class PCALogisticRegressor:
             np.arange(1, pca.n_components_ + 1), pca.explained_variance_ratio_, "+", linewidth=2
         )
         ax0.set_ylabel("PCA explained variance ratio")
-
+        components_chosen = self._cv_search_.best_estimator_.named_steps["pca"].n_components
         ax0.axvline(
-            self._cv_search_.best_estimator_.named_steps["pca"].n_components,
+            components_chosen,
             linestyle=":",
-            label="n_components chosen",
-        )
-        ax0.legend(prop=dict(size=12))
-
-        ax0.axvline(
-            self._cv_search_.best_estimator_.named_steps["pca"].n_components,
-            linestyle=":",
-            label="n_components chosen",
+            label=f"n_components chosen: {components_chosen}",
         )
         ax0.legend(prop=dict(size=12))
 
@@ -249,13 +268,34 @@ class PCALogisticRegressor:
         )
         ax1.set_ylabel("Classification accuracy (val)")
         ax1.set_xlabel("n_components")
-
+        fig.suptitle("PCA + Logistic Regression")
         plt.xlim(-1, pca.n_components_ + 1)
 
         plt.tight_layout()
         if save_path is not None:
             plt.savefig(save_path)
         plt.show()
+
+    def plot_roc_curve(self, X, y, ax=None, label=None, save_path=None):
+        """Plot ROC curve and print AUC."""
+        proba = self._cv_search_.predict_proba(X)[:, 1]
+        fpr, tpr, _ = roc_curve(y, proba)
+        auc = roc_auc_score(y, proba)
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(5, 5))
+        lbl = label or "PCA + Logistic"
+        ax.plot(fpr, tpr, label=f"{lbl} (AUC = {auc:.3f})")
+        ax.plot([0, 1], [0, 1], "k--", alpha=0.5)
+        ax.set_xlabel("False Positive Rate")
+        ax.set_ylabel("True Positive Rate")
+        ax.legend(loc="lower right")
+        ax.set_title("ROC curve - PCA + Logistic Regression")
+        if save_path is not None:
+            plt.savefig(save_path)
+        if ax is None:
+            plt.tight_layout()
+            plt.show()
+        return ax
 
 # ------------------------------------------------------------
 # Custom PLS Logistic Regression Class
@@ -398,15 +438,40 @@ class PLSLogisticRegressor:
 
         self.plot_cv_vs_components()
 
-    def plt_confusion_matrix(self, X_test, y_test, save_path=None):
+    def plt_confusion_matrix(self, X_test, y_test, is_test=True, save_path=None):
         y_pred = self.predict(X_test)
         cm = confusion_matrix(y_test, y_pred, labels=[0,1])
         disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=[0,1])
         disp.plot(cmap=plt.cm.Blues)
-        plt.title("Confusion matrix (PLS + Logistic Regression)")
+        if is_test:
+            title = "Confusion matrix - PLS + Logistic Regression\nTest Set"
+        else:
+            title = "Confusion matrix - PLS + Logistic Regression\nTrain Set"
+        plt.title(title)
         if save_path is not None:
             plt.savefig(save_path)
         plt.show()
+
+    def plot_roc_curve(self, X, y, ax=None, label=None, save_path=None):
+        """Plot ROC curve and print AUC."""
+        proba = self._cv_search_.predict_proba(X)[:, 1]
+        fpr, tpr, _ = roc_curve(y, proba)
+        auc = roc_auc_score(y, proba)
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(5, 5))
+        lbl = label or "PLS + Logistic"
+        ax.plot(fpr, tpr, label=f"{lbl} (AUC = {auc:.3f})")
+        ax.plot([0, 1], [0, 1], "k--", alpha=0.5)
+        ax.set_xlabel("False Positive Rate")
+        ax.set_ylabel("True Positive Rate")
+        ax.legend(loc="lower right")
+        ax.set_title("ROC curve - PLS + Logistic Regression")
+        if save_path is not None:
+            plt.savefig(save_path)
+        if ax is None:
+            plt.tight_layout()
+            plt.show()
+        return ax
 
     def print_logistic_regression_equation(self, X_train, y_train, n_components=None):
         if n_components is None:
@@ -423,6 +488,84 @@ class PLSLogisticRegressor:
         print()
         print("P(win) = 1 / (1 + exp(-z))")
         print()
+
+
+
+def plot_roc_compare(
+    log_reg=None,
+    pls=None,
+    pca=None,
+    X_log_reg=None,
+    X_pls=None,
+    X_pca=None,
+    y=None,
+    ax=None,
+    save_path=None,
+):
+    """
+    Plot ROC curves for up to three logistic-style models on the same axes.
+    Each model gets its own X (the feature set it was trained on); y is shared.
+
+    Parameters
+    ----------
+    log_reg : LogisticRegressor or None
+    pls : PLSLogisticRegressor or None
+    pca : PCALogisticRegressor or None
+    X_log_reg : array-like or None
+        Test features for log_reg (e.g. X_test_mf). Required if log_reg is not None.
+    X_pls : array-like or None
+        Test features for pls (e.g. X_test). Required if pls is not None.
+    X_pca : array-like or None
+        Test features for pca (e.g. X_test). Required if pca is not None.
+    y : array-like
+        Shared true labels (e.g. y_test). Required.
+    ax : matplotlib Axes, optional
+    save_path : path-like, optional
+    """
+    if y is None:
+        raise ValueError("y is required")
+    y = np.ravel(y)
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(6, 6))
+
+    if log_reg is not None:
+        if X_log_reg is None:
+            raise ValueError("X_log_reg is required when log_reg is provided")
+        proba = log_reg.clf.predict_proba(X_log_reg)[:, 1]
+        fpr, tpr, _ = roc_curve(y, proba)
+        auc = roc_auc_score(y, proba)
+        ax.plot(fpr, tpr, label=f"Logistic Regression (AUC = {auc:.3f})")
+
+    if pls is not None:
+        if X_pls is None:
+            raise ValueError("X_pls is required when pls is provided")
+        proba = pls._cv_search_.predict_proba(X_pls)[:, 1]
+        fpr, tpr, _ = roc_curve(y, proba)
+        auc = roc_auc_score(y, proba)
+        ax.plot(fpr, tpr, label=f"PLS + Logistic (AUC = {auc:.3f})")
+
+    if pca is not None:
+        if X_pca is None:
+            raise ValueError("X_pca is required when pca is provided")
+        proba = pca._cv_search_.predict_proba(X_pca)[:, 1]
+        fpr, tpr, _ = roc_curve(y, proba)
+        auc = roc_auc_score(y, proba)
+        ax.plot(fpr, tpr, label=f"PCA + Logistic (AUC = {auc:.3f})")
+
+    ax.plot([0, 1], [0, 1], "k--", alpha=0.5)
+    ax.set_xlabel("False Positive Rate")
+    ax.set_ylabel("True Positive Rate")
+    ax.legend(loc="lower right")
+    ax.set_title("ROC curve comparison")
+    ax.set_xlim(-0.02, 1.02)
+    ax.set_ylim(-0.02, 1.02)
+
+    if save_path is not None:
+        plt.savefig(save_path)
+    plt.tight_layout()
+    plt.show()
+    return ax
 
 
 if __name__ == "__main__":
@@ -507,8 +650,8 @@ if __name__ == "__main__":
     log_reg_clf = LogisticRegressor()
     log_reg_clf.run(X_train_mf, y_train_mf, X_test_mf, y_test_mf, param_grid=logistic_param_grid)
 
-    log_reg_clf.plt_confusion_matrix(X_test_mf, y_test_mf, save_path=_plots_dir / "log_reg_test_confusion_matrix.png")
-    log_reg_clf.plt_confusion_matrix(X_train_mf, y_train_mf, save_path=_plots_dir / "log_reg_train_confusion_matrix.png")
+    log_reg_clf.plt_confusion_matrix(X_test_mf, y_test_mf, is_test=True, save_path=_plots_dir / "log_reg_test_confusion_matrix.png")
+    log_reg_clf.plt_confusion_matrix(X_train_mf, y_train_mf, is_test=False, save_path=_plots_dir / "log_reg_train_confusion_matrix.png")
 
 
     # DataFrame of coefficients and feature names, sorted by coefficient value
@@ -542,8 +685,8 @@ if __name__ == "__main__":
             _models_dir.mkdir(parents=True, exist_ok=True)
             joblib.dump(pls, _models_dir / "pls_logistic_regressor_60_component.joblib")
 
-    pls.plt_confusion_matrix(X_test, y_test, save_path=_plots_dir / "pls_test_confusion_matrix.png")
-    pls.plt_confusion_matrix(X_train, y_train, save_path=_plots_dir / "pls_train_confusion_matrix.png")
+    pls.plt_confusion_matrix(X_test, y_test, is_test=True, save_path=_plots_dir / "pls_test_confusion_matrix.png")
+    pls.plt_confusion_matrix(X_train, y_train, is_test=False, save_path=_plots_dir / "pls_train_confusion_matrix.png")
     pls.plot_cv_vs_components(save_path=_plots_dir / "pls_cv_vs_components.png")
     pls.print_logistic_regression_equation(X_train, y_train)
 

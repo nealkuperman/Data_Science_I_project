@@ -16,7 +16,13 @@ from scripts.logistic_reg_models import (
     LogisticRegressor,
     PCALogisticRegressor,
     PLSLogisticRegressor,
+    plot_roc_compare
 )
+import xgboost as xgb
+from scripts.gradient_boosted_tree_models import train_xgboost
+from sklearn.metrics import accuracy_score
+from sklearn.inspection import permutation_importance
+
 from source.db import get_engine
 from scripts.get_data_from_db import *
 from scripts.preprocessing import *
@@ -28,8 +34,6 @@ _models_dir = _project_root / "models"
 default_engine = get_engine()
 
 RANDOM_STATE = 42
-
-
 
 
 if __name__ == "__main__":
@@ -113,9 +117,9 @@ if __name__ == "__main__":
     log_reg_clf = LogisticRegressor()
     log_reg_clf.run(X_train_mf, y_train_mf, X_test_mf, y_test_mf, param_grid=logistic_param_grid)
 
-    log_reg_clf.plt_confusion_matrix(X_test_mf, y_test_mf, save_path=_plots_dir / "log_reg_test_confusion_matrix.png")
-    log_reg_clf.plt_confusion_matrix(X_train_mf, y_train_mf, save_path=_plots_dir / "log_reg_train_confusion_matrix.png")
-
+    log_reg_clf.plt_confusion_matrix(X_test_mf, y_test_mf, is_test=True, save_path=_plots_dir / "log_reg_test_confusion_matrix.png")
+    log_reg_clf.plt_confusion_matrix(X_train_mf, y_train_mf, is_test=False, save_path=_plots_dir / "log_reg_train_confusion_matrix.png")
+    log_reg_clf.plot_roc_curve(X_test_mf, y_test_mf, save_path=_plots_dir / "log_reg_test_roc_curve.png")
 
     # DataFrame of coefficients and feature names, sorted by coefficient value
     coef_df = pd.DataFrame({
@@ -145,11 +149,11 @@ if __name__ == "__main__":
             _models_dir.mkdir(parents=True, exist_ok=True)
             joblib.dump(pls, _models_dir / "pls_logistic_regressor_60_component.joblib")
 
-    pls.plt_confusion_matrix(X_test, y_test, save_path=_plots_dir / "pls_test_confusion_matrix.png")
-    pls.plt_confusion_matrix(X_train, y_train, save_path=_plots_dir / "pls_train_confusion_matrix.png")
+    pls.plt_confusion_matrix(X_test, y_test, is_test=True, save_path=_plots_dir / "pls_test_confusion_matrix.png")
+    pls.plt_confusion_matrix(X_train, y_train, is_test=False, save_path=_plots_dir / "pls_train_confusion_matrix.png")
     pls.plot_cv_vs_components(save_path=_plots_dir / "pls_cv_vs_components.png")
     pls.print_logistic_regression_equation(X_train, y_train)
-
+    pls.plot_roc_curve(X_test, y_test, save_path=_plots_dir / "pls_test_roc_curve.png")
 
     if LOAD_MODELS:
         pca = joblib.load(_models_dir / "pca_logistic_regressor_60_component.joblib")
@@ -165,9 +169,121 @@ if __name__ == "__main__":
             joblib.dump(pca, _models_dir / "pca_logistic_regressor_60_component.joblib")
     
     pca.print_logistic_regression_equation(X_train, y_train)
-    pca.plt_confusion_matrix(X_test, y_test, save_path=_plots_dir / "pca_test_confusion_matrix.png")
-    pca.plt_confusion_matrix(X_train, y_train, save_path=_plots_dir / "pca_train_confusion_matrix.png")
+    pca.plt_confusion_matrix(X_test, y_test, is_test=True, save_path=_plots_dir / "pca_test_confusion_matrix.png")
+    pca.plt_confusion_matrix(X_train, y_train, is_test=False, save_path=_plots_dir / "pca_train_confusion_matrix.png")
     pca.plot_cv_vs_components(save_path=_plots_dir / "pca_cv_vs_components.png")
+    pca.plot_roc_curve(X_test, y_test, save_path=_plots_dir / "pca_test_roc_curve.png")
 
+    plot_roc_compare(log_reg=log_reg_clf, pls=pls, pca=pca, X_log_reg=X_test_mf, X_pls=X_test, X_pca=X_test, y=y_test, save_path=_plots_dir / "roc_compare.png")
+
+    def calc_jaccard_score(*sets_):
+        inter = set.intersection(*sets_)
+        union = set.union(*sets_)
+        return len(inter) / len(union)
+    
+    # Get indices of misclassification for each model
+    log_reg_misclassification_indices = set(np.where(y_test != log_reg_clf.predict(X_test_mf))[0])
+    pls_misclassification_indices = set(np.where(y_test != pls.predict(X_test))[0])
+    pca_misclassification_indices = set(np.where(y_test != pca.predict(X_test))[0])
+
+    log_reg_and_PCA = calc_jaccard_score(log_reg_misclassification_indices, pca_misclassification_indices)
+    log_reg_and_PLS = calc_jaccard_score(log_reg_misclassification_indices, pls_misclassification_indices)
+    pca_and_PLS = calc_jaccard_score(pca_misclassification_indices, pls_misclassification_indices)
+    log_reg_and_PCA_and_PLS = calc_jaccard_score(log_reg_misclassification_indices, pca_misclassification_indices, pls_misclassification_indices)
+    
+    print(f"Logistic Regression and PCA: {log_reg_and_PCA}")
+    print(f"Logistic Regression and PLS: {log_reg_and_PLS}")
+    print(f"PCA and PLS: {pca_and_PLS}")
+    print(f"Logistic Regression and PCA and PLS: {log_reg_and_PCA_and_PLS}")
+    
+
+
+#%%
+    # GRADIENT BOOSTED TREE MODELS
+
+    # ================================================================
+    # Train the model
+    # ================================================================
+    xgb_model = xgb.XGBClassifier(
+        # n_jobs=multiprocessing.cpu_count() // 2, tree_method="hist"
+        n_jobs=1, tree_method="hist"
+    )
+
+    clf = joblib.load(_models_dir / "xgb_full_grid_clf_2026-03-03_16-11-54.joblib")
+    best_params = clf.best_params_
+    model = train_xgboost(xgb_model, X_train, y_train, params=best_params, cv=5, save_model=False)
+
+    # ================================================================
+    # Evaluate the model
+    # ================================================================
+    y_pred = model.predict(X_test)
+    accuracy = accuracy_score(y_test, y_pred)
+    print(f"Accuracy: {accuracy * 100:.2f}%")
+
+    # ================================================================
+    # Permutation importance on test set
+    # ================================================================
+    best = model
+    feature_names = X_train.columns
+    PERMUTATION_IMPORTANCE_THRESHOLD = 1e-3
+    top_n_features = 15
+    perm = permutation_importance(best, X_test, y_test, n_repeats=20, random_state=42, n_jobs=1)
+    sorted_idx_perm = perm.importances_mean.argsort()
+    perm_importance_df = pd.DataFrame({
+        "feature": feature_names[sorted_idx_perm],
+        "permutation_importance_mean": perm.importances_mean[sorted_idx_perm],
+    })
+    perm_importance_filtered = perm_importance_df[
+        perm_importance_df["permutation_importance_mean"].abs() >= 
+        PERMUTATION_IMPORTANCE_THRESHOLD
+    ].sort_values(by="permutation_importance_mean", ascending=True).tail(top_n_features)
+
+
+    # ================================================================
+    # Rerun with 15 most important features from permutation importance
+    # ================================================================
+    xgb_model_top = xgb.XGBClassifier(
+        # n_jobs=multiprocessing.cpu_count() // 2, tree_method="hist"
+        n_jobs=1, tree_method="hist"
+
+    )
+
+    n_features = 15
+    top_features = perm_importance_filtered.iloc[-n_features:]["feature"].values.tolist()
+    X_train_top = X_train[top_features]
+    X_test_top = X_test[top_features]
+    model_top = train_xgboost(xgb_model_top, X_train_top, y_train, params=best_params, cv=5, save_model=False)
+    y_pred_top_xgb = model_top.predict(X_test_top)
+    accuracy_top_xgb = accuracy_score(y_test, y_pred_top_xgb)
+    print(f"Accuracy: {accuracy_top_xgb * 100:.2f}%")
+
+
+
+#%% Jaccard scores
+
+    def calc_jaccard_score(*sets_):
+        inter = set.intersection(*sets_)
+        union = set.union(*sets_)
+        return len(inter) / len(union)
+    
+    # Get indices of misclassification for each model
+    xgb_top_mis_idx = set(np.where(y_test != y_pred_top_xgb)[0])
+    log_reg_misclassification_indices = set(np.where(y_test != log_reg_clf.predict(X_test_mf))[0])
+    pls_misclassification_indices = set(np.where(y_test != pls.predict(X_test))[0])
+    pca_misclassification_indices = set(np.where(y_test != pca.predict(X_test))[0])
+
+    log_reg_and_PCA = calc_jaccard_score(log_reg_misclassification_indices, pca_misclassification_indices)
+    log_reg_and_PLS = calc_jaccard_score(log_reg_misclassification_indices, pls_misclassification_indices)
+    pca_and_PLS = calc_jaccard_score(pca_misclassification_indices, pls_misclassification_indices)
+    log_reg_and_PCA_and_PLS = calc_jaccard_score(log_reg_misclassification_indices, pca_misclassification_indices, pls_misclassification_indices)
+    log_reg_and_XGB = calc_jaccard_score(log_reg_misclassification_indices, xgb_top_mis_idx)
+    log_reg_PLS_and_XGB = calc_jaccard_score(log_reg_misclassification_indices, pls_misclassification_indices, xgb_top_mis_idx)
+
+    print(f"Logistic Regression and PCA: {log_reg_and_PCA}")
+    print(f"Logistic Regression and PLS: {log_reg_and_PLS}")
+    print(f"PCA and PLS: {pca_and_PLS}")
+    print(f"Logistic Regression and PCA and PLS: {log_reg_and_PCA_and_PLS}")
+    print(f"Logistic Regression and XGB: {log_reg_and_XGB}")
+    print(f"Logistic Regression and PLS and XGB: {log_reg_PLS_and_XGB}")
 
 # %%

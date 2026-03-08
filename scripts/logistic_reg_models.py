@@ -88,13 +88,21 @@ class LogisticRegressor:
         cm = confusion_matrix(y_test, y_pred, labels=[0,1])
         disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=[0,1])
         disp.plot(cmap=plt.cm.Blues)
+
+        disp.ax_.set_xlabel("Predicted label", fontsize=14)
+        disp.ax_.set_ylabel("True label", fontsize=14)
+        disp.ax_.tick_params(axis="both", labelsize=12)
+
+        for t in disp.text_.ravel():
+            t.set_fontsize(12)
+
         if is_test:
             title = "Confusion matrix - Logistic Regression\nTest Set"
         else:
             title = "Confusion matrix - Logistic Regression\nTrain Set"
         plt.title(title)
         if save_path is not None:
-            plt.savefig(save_path)
+            plt.savefig(save_path, transparent=True, dpi=300)
         plt.show()
         return self
 
@@ -103,18 +111,20 @@ class LogisticRegressor:
         proba = self.clf.predict_proba(X)[:, 1]
         fpr, tpr, _ = roc_curve(y, proba)
         auc = roc_auc_score(y, proba)
+        created_ax = ax is None
         if ax is None:
             fig, ax = plt.subplots(figsize=(5, 5))
         lbl = label or "Logistic Regression"
         ax.plot(fpr, tpr, label=f"{lbl} (AUC = {auc:.3f})")
         ax.plot([0, 1], [0, 1], "k--", alpha=0.5)
-        ax.set_xlabel("False Positive Rate")
-        ax.set_ylabel("True Positive Rate")
-        ax.legend(loc="lower right")
-        ax.set_title("ROC curve - Logistic Regression")
+        ax.set_xlabel("False Positive Rate", fontsize=13)
+        ax.set_ylabel("True Positive Rate", fontsize=13)
+        ax.tick_params(axis="both", labelsize=11)
+        ax.legend(loc="lower right", fontsize=11, title_fontsize=11)
+        ax.set_title("ROC curve - Logistic Regression", fontsize=15)
         if save_path is not None:
-            plt.savefig(save_path)
-        if ax is None:
+            plt.savefig(save_path, dpi=300, bbox_inches="tight", transparent=True)
+        if created_ax:
             plt.tight_layout()
             plt.show()
         return ax
@@ -227,13 +237,21 @@ class PCALogisticRegressor:
         cm = confusion_matrix(y, y_pred, labels=[0,1])
         disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=[0,1])
         disp.plot(cmap=plt.cm.Blues)
+
+        disp.ax_.set_xlabel("Predicted label", fontsize=14)
+        disp.ax_.set_ylabel("True label", fontsize=14)
+        disp.ax_.tick_params(axis="both", labelsize=12)
+
+        for t in disp.text_.ravel():
+            t.set_fontsize(12)
+
         if is_test:
             title = "Confusion matrix - PCA + Logistic Regression\nTest Set"
         else:
             title = "Confusion matrix - PCA + Logistic Regression\nTrain Set"
         plt.title(title)
         if save_path is not None:
-            plt.savefig(save_path)
+            plt.savefig(save_path, transparent=True, dpi=300)
         plt.show()
 
     def plot_cv_vs_components(self, save_path=None):
@@ -273,7 +291,7 @@ class PCALogisticRegressor:
 
         plt.tight_layout()
         if save_path is not None:
-            plt.savefig(save_path)
+            plt.savefig(save_path, transparent=True, dpi=300)
         plt.show()
 
     def plot_roc_curve(self, X, y, ax=None, label=None, save_path=None):
@@ -281,18 +299,20 @@ class PCALogisticRegressor:
         proba = self._cv_search_.predict_proba(X)[:, 1]
         fpr, tpr, _ = roc_curve(y, proba)
         auc = roc_auc_score(y, proba)
+        created_ax = ax is None
         if ax is None:
             fig, ax = plt.subplots(figsize=(5, 5))
         lbl = label or "PCA + Logistic"
         ax.plot(fpr, tpr, label=f"{lbl} (AUC = {auc:.3f})")
         ax.plot([0, 1], [0, 1], "k--", alpha=0.5)
-        ax.set_xlabel("False Positive Rate")
-        ax.set_ylabel("True Positive Rate")
-        ax.legend(loc="lower right")
-        ax.set_title("ROC curve - PCA + Logistic Regression")
+        ax.set_xlabel("False Positive Rate", fontsize=13)
+        ax.set_ylabel("True Positive Rate", fontsize=13)
+        ax.tick_params(axis="both", labelsize=11)
+        ax.legend(loc="lower right", fontsize=11, title_fontsize=11)
+        ax.set_title("ROC curve - PCA + Logistic Regression", fontsize=15)
         if save_path is not None:
-            plt.savefig(save_path)
-        if ax is None:
+            plt.savefig(save_path, dpi=300, bbox_inches="tight", transparent=True)
+        if created_ax:
             plt.tight_layout()
             plt.show()
         return ax
@@ -426,7 +446,7 @@ class PLSLogisticRegressor:
         plt.title("PLS + Logistic Regression")
         plt.tight_layout()
         if save_path is not None:
-            plt.savefig(save_path)
+            plt.savefig(save_path, transparent=True, dpi=300)
         plt.show()
 
     def run(self, X_train, y_train, X_test, y_test, param_grid=None, refit=True):
@@ -443,13 +463,21 @@ class PLSLogisticRegressor:
         cm = confusion_matrix(y_test, y_pred, labels=[0,1])
         disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=[0,1])
         disp.plot(cmap=plt.cm.Blues)
+
+        disp.ax_.set_xlabel("Predicted label", fontsize=14)
+        disp.ax_.set_ylabel("True label", fontsize=14)
+        disp.ax_.tick_params(axis="both", labelsize=12)
+
+        for t in disp.text_.ravel():
+            t.set_fontsize(12)
+
         if is_test:
             title = "Confusion matrix - PLS + Logistic Regression\nTest Set"
         else:
             title = "Confusion matrix - PLS + Logistic Regression\nTrain Set"
         plt.title(title)
         if save_path is not None:
-            plt.savefig(save_path)
+            plt.savefig(save_path, transparent=True, dpi=300)
         plt.show()
 
     def plot_roc_curve(self, X, y, ax=None, label=None, save_path=None):
@@ -457,18 +485,20 @@ class PLSLogisticRegressor:
         proba = self._cv_search_.predict_proba(X)[:, 1]
         fpr, tpr, _ = roc_curve(y, proba)
         auc = roc_auc_score(y, proba)
+        created_ax = ax is None
         if ax is None:
             fig, ax = plt.subplots(figsize=(5, 5))
         lbl = label or "PLS + Logistic"
         ax.plot(fpr, tpr, label=f"{lbl} (AUC = {auc:.3f})")
         ax.plot([0, 1], [0, 1], "k--", alpha=0.5)
-        ax.set_xlabel("False Positive Rate")
-        ax.set_ylabel("True Positive Rate")
-        ax.legend(loc="lower right")
-        ax.set_title("ROC curve - PLS + Logistic Regression")
+        ax.set_xlabel("False Positive Rate", fontsize=13)
+        ax.set_ylabel("True Positive Rate", fontsize=13)
+        ax.tick_params(axis="both", labelsize=11)
+        ax.legend(loc="lower right", fontsize=11, title_fontsize=11)
+        ax.set_title("ROC curve - PLS + Logistic Regression", fontsize=15)
         if save_path is not None:
-            plt.savefig(save_path)
-        if ax is None:
+            plt.savefig(save_path, dpi=300, bbox_inches="tight", transparent=True)
+        if created_ax:
             plt.tight_layout()
             plt.show()
         return ax
@@ -526,6 +556,7 @@ def plot_roc_compare(
         raise ValueError("y is required")
     y = np.ravel(y)
 
+    created_ax = ax is None
     if ax is None:
         fig, ax = plt.subplots(figsize=(6, 6))
 
@@ -554,17 +585,19 @@ def plot_roc_compare(
         ax.plot(fpr, tpr, label=f"PCA + Logistic (AUC = {auc:.3f})")
 
     ax.plot([0, 1], [0, 1], "k--", alpha=0.5)
-    ax.set_xlabel("False Positive Rate")
-    ax.set_ylabel("True Positive Rate")
-    ax.legend(loc="lower right")
-    ax.set_title("ROC curve comparison")
+    ax.set_xlabel("False Positive Rate", fontsize=13)
+    ax.set_ylabel("True Positive Rate", fontsize=13)
+    ax.tick_params(axis="both", labelsize=11)
+    ax.legend(loc="lower right", fontsize=11, title_fontsize=11)
+    ax.set_title("ROC curve comparison", fontsize=15)
     ax.set_xlim(-0.02, 1.02)
     ax.set_ylim(-0.02, 1.02)
 
     if save_path is not None:
-        plt.savefig(save_path)
-    plt.tight_layout()
-    plt.show()
+        plt.savefig(save_path, dpi=300, bbox_inches="tight", transparent=True)
+    if created_ax:
+        plt.tight_layout()
+        plt.show()
     return ax
 
 

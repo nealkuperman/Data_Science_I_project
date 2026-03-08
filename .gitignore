@@ -57,3 +57,8 @@ scratch/
 outdated/
 to_do.md
 images/
+models/outdated/
+cleaned_data/outdated/
+
+docs/Resources.md
+docs/PIPELINE.md

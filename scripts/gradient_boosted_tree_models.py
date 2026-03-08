@@ -44,14 +44,6 @@ BEST_PARAMS_DEFAULT = {'alpha': 0.2,
                        }
 
 DEFAULT_PARAM_GRID = {
-        "max_depth": [5, 6, 7, 8],
-        "n_estimators": [100, 150, 175, 200, 250],
-        "gamma": [0.075, 0.1, 0.2, 0.5],
-        "learning_rate": [0.05, 0.1, 0.125, 0.15, 0.2],
-        "alpha": [0.0, 0.1, 0.2]  # L1 regularization in native xgb
-    }
-
-DEFAULT_PARAM_GRID = {
         "max_depth": [5, 6, 7],
         "n_estimators": [100, 150, 175, 200, 250],
         "gamma": [0.075, 0.1, 0.2],
@@ -217,8 +209,16 @@ if __name__ == "__main__":
 
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=labels)
     disp.plot(cmap=plt.cm.Blues)
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=labels)
+    disp.plot(cmap=plt.cm.Blues)
+    disp.ax_.set_xlabel("Predicted label", fontsize=14)
+    disp.ax_.set_ylabel("True label", fontsize=14)
+    disp.ax_.tick_params(axis="both", labelsize=12)
+
+    for t in disp.text_.ravel():
+        t.set_fontsize(12)
     plt.title("Confusion matrix - Gradient Boosted Tree \nFull Feature Model, Test Set")
-    plt.savefig(_plots_dir / "xgb_full_feature_model_confusion_matrix_test.png")
+    plt.savefig(_plots_dir / "xgb_full_feature_model_confusion_matrix_test.png", transparent=True, dpi=300)
     plt.show()
 
     # ================================================================
@@ -239,7 +239,7 @@ if __name__ == "__main__":
     plt.xlabel("XGBoost feature importance (Train Set)")
     plt.title(f"XGBoost feature importance (Train Set)\ntop {top_n_features} features")
     plt.tight_layout()
-    plt.savefig(_plots_dir / "xgb_full_feature_model_feature_importance_train.png")
+    plt.savefig(_plots_dir / "xgb_full_feature_model_feature_importance_train.png", transparent=True, dpi=300)
     plt.show()
 
     important_features = importance_filtered["feature"].tolist()
@@ -271,7 +271,7 @@ if __name__ == "__main__":
     plt.xlabel("Permutation importance (test set)")
     plt.title(f"Permutation importance of features (Test Set)\ntop {top_n_features} features")
     plt.tight_layout()
-    plt.savefig(_plots_dir / "xgb_full_feature_model_permutation_importance_test.png")
+    plt.savefig(_plots_dir / "xgb_full_feature_model_permutation_importance_test.png", transparent=True, dpi=300)
     plt.show()
 
     # ================================================================
@@ -301,8 +301,15 @@ if __name__ == "__main__":
 
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=labels)
     disp.plot(cmap=plt.cm.Blues)
+    disp.ax_.set_xlabel("Predicted label", fontsize=14)
+    disp.ax_.set_ylabel("True label", fontsize=14)
+    disp.ax_.tick_params(axis="both", labelsize=12)
+
+    for t in disp.text_.ravel():
+        t.set_fontsize(12)
+
     plt.title("Confusion matrix - Gradient Boosted Tree \nReduced Feature Model, Test Set")
-    plt.savefig(_plots_dir / "xgb_reduced_feature_model_confusion_matrix_test.png")
+    plt.savefig(_plots_dir / "xgb_reduced_feature_model_confusion_matrix_test.png", transparent=True, dpi=300)
     plt.show()
 
     # ================================================================
@@ -358,7 +365,7 @@ if __name__ == "__main__":
     plt.ylabel("Count")
     plt.title("Distribution of CV mean_test_score across XGBoost grid")
     plt.tight_layout()
-    plt.savefig(_plots_dir / "xgb_cv_accuracy_distribution.png")
+    plt.savefig(_plots_dir / "xgb_cv_accuracy_distribution.png", transparent=True, dpi=300)
     plt.show()
 # %%
 

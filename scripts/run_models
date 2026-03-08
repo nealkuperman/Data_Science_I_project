@@ -9,6 +9,7 @@ if str(_project_root) not in sys.path:
 import pandas as pd
 import numpy as np
 from matplotlib import pyplot as plt
+import seaborn as sns
 from sklearn.model_selection import train_test_split
 import joblib
 from scripts.logistic_reg_models import (
@@ -203,7 +204,7 @@ if __name__ == "__main__":
 
     # ================================================================
     # Train the model
-    # ================================================================
+    # ================================================================fx
     xgb_model = xgb.XGBClassifier(
         # n_jobs=multiprocessing.cpu_count() // 2, tree_method="hist"
         n_jobs=1, tree_method="hist"
@@ -216,9 +217,9 @@ if __name__ == "__main__":
     # ================================================================
     # Evaluate the model
     # ================================================================
-    y_pred = model.predict(X_test)
-    accuracy = accuracy_score(y_test, y_pred)
-    print(f"Accuracy: {accuracy * 100:.2f}%")
+    y_pred_xgb = model.predict(X_test)
+    accuracy_xgb = accuracy_score(y_test, y_pred_xgb)
+    print(f"Accuracy: {accuracy_xgb * 100:.2f}%")
 
     # ================================================================
     # Permutation importance on test set
@@ -258,6 +259,64 @@ if __name__ == "__main__":
     print(f"Accuracy: {accuracy_top_xgb * 100:.2f}%")
 
 
+    # ================================================================
+    # Plot CV accuracy vs max_depth, one plot per n_estimators
+    # ================================================================
+    cv_res = clf.cv_results_
+    results_df = pd.DataFrame({
+        "max_depth": np.asarray(cv_res["param_max_depth"], dtype=int),
+        "n_estimators": np.asarray(cv_res["param_n_estimators"], dtype=int),
+        "mean_test_score": cv_res["mean_test_score"],
+        "std_test_score": cv_res["std_test_score"],
+    })
+
+    n_vals = sorted(results_df["n_estimators"].unique())
+    n_plots = len(n_vals)
+
+    fig, axes = plt.subplots(
+        nrows=1,
+        ncols=n_plots,
+        figsize=(4 * n_plots, 4),
+        sharey=True,
+    )
+
+    # axes is 1D array if n_plots > 1, otherwise a single Axes
+    if n_plots == 1:
+        axes = [axes]
+
+    for ax, n in zip(axes, n_vals):
+        sub = results_df[results_df["n_estimators"] == n].sort_values("max_depth")
+        ax.errorbar(
+            sub["max_depth"],
+            sub["mean_test_score"],
+            yerr=sub["std_test_score"],
+            marker="o",
+            linestyle="-",
+        )
+        ax.set_title(f"n_estimators = {n}")
+        ax.set_xlabel("max_depth")
+        ax.grid(True, alpha=0.3)
+
+    axes[0].set_ylabel("CV accuracy")
+    fig.suptitle("XGBoost CV: accuracy vs max_depth by n_estimators", y=1.02)
+    plt.tight_layout()
+    plt.show()
+
+
+    # ================================================================
+    # Plot distbrution of CV accuracy
+    # ================================================================
+    plt.figure(figsize=(6, 4))
+    sns.histplot(data=results_df, x="mean_test_score", bins=20, kde=True)
+    plt.xlabel("CV mean_test_score")
+    plt.ylabel("Count")
+    plt.title("Distribution of CV mean_test_score across XGBoost grid")
+    plt.tight_layout()
+    plt.savefig(_plots_dir / "xgb_cv_accuracy_distribution.png", transparent=True, dpi=300)
+    plt.show()
+
+
+
 
 #%% Jaccard scores
 
@@ -268,6 +327,8 @@ if __name__ == "__main__":
     
     # Get indices of misclassification for each model
     xgb_top_mis_idx = set(np.where(y_test != y_pred_top_xgb)[0])
+    xgb_mis_idx = set(np.where(y_test != y_pred_xgb)[0])
+
     log_reg_misclassification_indices = set(np.where(y_test != log_reg_clf.predict(X_test_mf))[0])
     pls_misclassification_indices = set(np.where(y_test != pls.predict(X_test))[0])
     pca_misclassification_indices = set(np.where(y_test != pca.predict(X_test))[0])
@@ -276,14 +337,122 @@ if __name__ == "__main__":
     log_reg_and_PLS = calc_jaccard_score(log_reg_misclassification_indices, pls_misclassification_indices)
     pca_and_PLS = calc_jaccard_score(pca_misclassification_indices, pls_misclassification_indices)
     log_reg_and_PCA_and_PLS = calc_jaccard_score(log_reg_misclassification_indices, pca_misclassification_indices, pls_misclassification_indices)
-    log_reg_and_XGB = calc_jaccard_score(log_reg_misclassification_indices, xgb_top_mis_idx)
-    log_reg_PLS_and_XGB = calc_jaccard_score(log_reg_misclassification_indices, pls_misclassification_indices, xgb_top_mis_idx)
+    log_reg_and_XGB_top = calc_jaccard_score(log_reg_misclassification_indices, xgb_top_mis_idx)
+    log_reg_PLS_and_XGB_top = calc_jaccard_score(log_reg_misclassification_indices, pls_misclassification_indices, xgb_top_mis_idx)
+    log_reg_PCA_and_XGB_top = calc_jaccard_score(log_reg_misclassification_indices, pca_misclassification_indices, xgb_top_mis_idx)
+    xgb_and_xgb_top = calc_jaccard_score(xgb_mis_idx, xgb_top_mis_idx)
+
+    log_reg_PLS_and_XGB = calc_jaccard_score(log_reg_misclassification_indices, xgb_mis_idx, pls_misclassification_indices)
+    log_reg_PCA_and_XGB = calc_jaccard_score(log_reg_misclassification_indices, xgb_mis_idx, pca_misclassification_indices)
+    log_reg_and_XGB = calc_jaccard_score(log_reg_misclassification_indices, xgb_mis_idx)
+
+
 
     print(f"Logistic Regression and PCA: {log_reg_and_PCA}")
     print(f"Logistic Regression and PLS: {log_reg_and_PLS}")
     print(f"PCA and PLS: {pca_and_PLS}")
     print(f"Logistic Regression and PCA and PLS: {log_reg_and_PCA_and_PLS}")
+    print(f"Logistic Regression and XGB top: {log_reg_and_XGB_top}")
+    print(f"Logistic Regression PLS and XGB top: {log_reg_PLS_and_XGB_top}")
+    print(f"Logistic Regression PLS and XGB : {log_reg_PLS_and_XGB}")
+    print(f"XGB and XGB top: {xgb_and_xgb_top}")
+    print(f"Logistic Regression PCA and XGB top: {log_reg_PCA_and_XGB_top}")
+    print(f"Logistic Regression PCA and XGB: {log_reg_PCA_and_XGB}")
     print(f"Logistic Regression and XGB: {log_reg_and_XGB}")
-    print(f"Logistic Regression and PLS and XGB: {log_reg_PLS_and_XGB}")
+
+    # Calculate Precent of correct predictions as a function of win% difference threshold
+
+    def count_higher_wp_losses(y_true, X_for_condition, preds_dict, loss_diff = 0.0):
+        """
+        y_true: 1D array/Series of true win (1)/loss (0)
+        X_for_condition: DataFrame with 'diff_win_percentage' for the test rows
+        preds_dict: dict[name -> 1D array/Series of predictions (0/1)],
+                    all aligned to y_true (same ordering)
+        """
+        y_true = np.ravel(y_true)
+
+        # Condition: team had higher win % (diff > 0) but actually lost (y==0)
+        mask_high_wp_lost = (X_for_condition["diff_win_percentage"] > loss_diff) & (y_true == 0)
+
+        results = {}
+        total_upsets = int(mask_high_wp_lost.sum())
+
+        for name, y_pred in preds_dict.items():
+            y_pred = np.ravel(y_pred)
+            correct_loss = int((mask_high_wp_lost & (y_pred == 0)).sum())
+            incorrect_loss = int((mask_high_wp_lost & (y_pred == 1)).sum())
+            results[name] = {
+                "total_higher_wp_losses": total_upsets,
+                "correct_loss_preds": correct_loss,
+                "incorrect_loss_preds": incorrect_loss,
+                "pct_correct_on_these": correct_loss / total_upsets if total_upsets > 0 else np.nan,
+            }
+
+        return pd.DataFrame(results).T
+
+    preds = {
+    "LR1": log_reg_clf.predict(X_test_mf),
+    "LR3": pls.predict(X_test),
+    "LR2": pca.predict(X_test),
+    "GB2": model_top.predict(X_test_top),
+    "GB1": model.predict(X_test),
+    }
+
+    loss_diffs = np.arange(-1, 0.4, 0.05)
+    # loss_diffs = np.arange(0, 0.405, 0.05)
+
+
+
+    rows = []
+    for loss_diff in loss_diffs:
+        stats = count_higher_wp_losses(y_test, X_test, preds, loss_diff=loss_diff)
+        stats = stats.reset_index().rename(columns={"index": "model"})
+        stats["loss_diff"] = loss_diff
+        rows.append(stats)
+
+    upset_stats_df = pd.concat(rows, ignore_index=True)
+
+    print(upset_stats_df)
+
+        # Plot: pct_correct_on_these vs loss_diff, one line per model
+    markers = ["o", "s", "D", "^", "v", "P", "X"]
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+    for (model_name, sub), marker in zip(upset_stats_df.groupby("model"), markers):
+        ax.plot(
+            -sub["loss_diff"],
+            sub["pct_correct_on_these"],
+            marker=marker,
+            label=model_name,
+        )
+
+    ax.set_xlabel(" Win% difference Threshold (Winner win% - Loser win%)")
+    ax.set_ylabel("Model Accuracy")
+    ax.set_title(f"Model Performance vs Win% Difference Threshold \n(positive = favorite wins, negative = upset)")
+    ax.legend()
+    plt.tight_layout()
+    plt.savefig(_plots_dir / "model_comparison_on_win_difference_threshold_-1_to_0.4.png", transparent=True, dpi=300)
+    plt.show()
+
+    # Plot the distribution of win% difference for winning teams
+    # team - opponent win percentage from the dataframe
+    diff = box_score_df["diff_win_percentage"].to_numpy()
+    y = box_score_df["win"].astype(int).to_numpy()  # 1 = this team won, 0 = lost
+
+    # For each game row, convert to (winner win% - loser win%)
+    # If this row is the winner, keep diff; if it’s the loser, flip the sign.
+    winner_diff = np.where(y == 1, diff, -diff)
+
+    plt.figure(figsize=(6, 4))
+    sns.histplot(winner_diff, bins=40, kde=False)
+    plt.axvline(0, color="k", linestyle="--", alpha=0.6)
+
+    plt.xlabel("Winner win% − loser win%")
+    plt.ylabel("Number of games")
+    plt.title("Distribution of win% difference for winning teams\n"
+            "(negative = upset, positive = favorite wins)")
+    plt.tight_layout()
+    plt.show()
+
 
 # %%

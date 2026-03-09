@@ -18,7 +18,7 @@ A data science project for predicting NBA game outcomes (win/loss) using team bo
 ### Requirements
 
 - **Python 3.12+** (see `pyproject.toml`; the project uses `uv` or pip).
-- **PostgreSQL** (e.g. via Docker) for loading raw data—see [DATABASE_SETUP.md](DATABASE_SETUP.md).
+- **PostgreSQL** (e.g. via Docker) for loading raw data—see [docs/DATABASE_SETUP.md](docs/DATABASE_SETUP.md).
 - Key dependencies: `pandas`, `numpy`, `scikit-learn`, `xgboost`, `matplotlib`, `seaborn`, `joblib`, `sqlalchemy`, `psycopg2-binary`, `python-dotenv`, `nba-api`.
 
 ### Install
@@ -60,17 +60,18 @@ If you use the DB for raw data:
 │   ├── gradient_boosted_tree_models.py  # XGBoost training, CV, feature importance
 │   └── ...
 ├── schema/                 # SQL table definitions, reset/check scripts
-├── data/                   # Raw CSVs from pull (if used)
+├── data/                   # Raw data pulled from NBA.com
 ├── cleaned_data/           # Processed CSV used for modeling (e.g. cleaned_data_2_21_26.csv)
 ├── figures/                # Saved plots (confusion matrices, ROC, model comparison, etc.)
 ├── models/                 # Saved models (joblib: PLS/PCA logistic, XGBoost)
 ├── docs/
-│   ├── PIPELINE.md         # Pull → Load pipeline
-│   └── Resources.md        # References (permutation importance, ELO, SHAP, etc.)
+│   ├── GAME_SUMMARY_COLUMNS.md   # Column reference; "Used for modeling?" checklist
+│   ├── PIPELINE.md               # Pull → Load pipeline
+|   └── DATABASE_SETUP.md  
 ├── tests/
 ├── pyproject.toml
 ├── docker-compose.yml
-└── DATABASE_SETUP.md
+
 ```
 
 ---
@@ -87,7 +88,7 @@ If you use the DB for raw data:
    The result can be written to `cleaned_data/` for modeling.
 4. **Modeling input:** `run_models` (and the model scripts) read from `cleaned_data/cleaned_data_2_21_26.csv` and use a defined set of feature columns (excluding identifiers, in-game stats that leak the outcome, and some redundant diff columns).
 
-See [docs/PIPELINE.md](docs/PIPELINE.md) for pull/load details and [cleaned_data/GAME_SUMMARY_COLUMNS.md](cleaned_data/GAME_SUMMARY_COLUMNS.md) if present for column notes.
+See [docs/PIPELINE.md](docs/PIPELINE.md) for pull/load details and [docs/GAME_SUMMARY_COLUMNS.md](docs/GAME_SUMMARY_COLUMNS.md) for column definitions and which columns are used for modeling.
 
 ---
 
@@ -143,9 +144,9 @@ Covers load scripts and DB-related behavior (see `tests/conftest.py` for test DB
 
 ## References
 
-- [docs/Resources.md](docs/Resources.md) — Links to permutation importance, ELO, SHAP, adjusted plus-minus, and NBA prediction articles/repos.
+- [docs/GAME_SUMMARY_COLUMNS.md](docs/GAME_SUMMARY_COLUMNS.md) — Column definitions and "Used for modeling?" checklist for the cleaned game summary.
 - [docs/PIPELINE.md](docs/PIPELINE.md) — Pull → Load pipeline and scheduler options.
-- [DATABASE_SETUP.md](DATABASE_SETUP.md) — Docker Postgres setup and connection strings.
+- [docs/DATABASE_SETUP.md](docs/DATABASE_SETUP.md) — Docker Postgres setup and connection strings.
 
 ---
 

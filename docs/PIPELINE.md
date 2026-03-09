@@ -69,7 +69,7 @@ So the pull step should write to exactly these paths (and column names) if you w
    - Call your existing functions (e.g. `getTeamGameLogs`, `getPlayerGameLogs`, `get_teams_info`, etc.) in a fixed order.  
    - Write each DataFrame to the correct `data/` path.  
    Then you can run:  
-   `python pull_NBA_data.py --seasons 2020 2021 2022 2023 2024`
+   `python scripts/pull_NBA_data.py --seasons 2020 2021 2022 2023 2024`
 
 4. **Rate limiting**  
    Keep your `time.sleep(0.6)` (or similar) between nba_api calls to avoid blocks; the API is sensitive to heavy traffic.
@@ -82,18 +82,18 @@ After pull writes the expected CSVs:
 
 ```bash
 # From project directory
-python pull_NBA_data.py              # or with --seasons ...
+python scripts/pull_NBA_data.py      # or with --seasons ...
 python -m source.load_data           # or --test, --target game, etc.
 ```
 
-Or use the small runner (see `run_pipeline.py`): it runs pull then load so you have a single entry point.
+Or add a small `run_pipeline.py` that chains pull then load for a single entry point.
 
 ---
 
 ## Scheduling (optional)
 
 - **Cron (Mac/Linux):**  
-  `0 6 * * * cd /path/to/project && python pull_NBA_data.py && python -m source.load_data`  
+  `0 6 * * * cd /path/to/project && python scripts/pull_NBA_data.py && python -m source.load_data`  
   (e.g. daily at 6 AM.)
 - **Notebook:**  
   One cell that runs pull logic and writes CSVs; next cell runs `load_data.load_all(engine)`.
@@ -106,4 +106,4 @@ Or use the small runner (see `run_pipeline.py`): it runs pull then load so you h
 
 - **Best way to build the pipeline:** Python + **nba_api** for pull, your existing **load_data** for DB load.
 - **No extra packages required** for the pipeline itself; pandas + nba_api + SQLAlchemy are enough.
-- **Concrete steps:** (1) Make `pull_NBA_data.py` write CSVs to the paths and names the loaders expect; (2) Run pull, then `python -m source.load_data`; (3) Add a small `run_pipeline.py` or cron if you want one command or scheduling.
+- **Concrete steps:** (1) Make `scripts/pull_NBA_data.py` write CSVs to the paths and names the loaders expect; (2) Run pull, then `python -m source.load_data`; (3) Add a small `run_pipeline.py` or cron if you want one command or scheduling.

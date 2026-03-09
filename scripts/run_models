@@ -362,6 +362,12 @@ if __name__ == "__main__":
 
     # Calculate Precent of correct predictions as a function of win% difference threshold
 
+    # --- Number of games where the team with higher season win% won ---
+    higher_wp_won = (box_score_df["diff_win_percentage"] > 0) & (box_score_df["win"] == 1)
+    n_games_higher_wp_won = higher_wp_won.sum()
+    n_games_total = box_score_df["game_id"].nunique()
+    print(f"Games where team with higher season win% won: {n_games_higher_wp_won} of {n_games_total} ({100 * n_games_higher_wp_won / n_games_total:.1f}%)")
+
     def count_higher_wp_losses(y_true, X_for_condition, preds_dict, loss_diff = 0.0):
         """
         y_true: 1D array/Series of true win (1)/loss (0)

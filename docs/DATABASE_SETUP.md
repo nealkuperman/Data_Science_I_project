@@ -251,5 +251,5 @@ Then run `python -m source.load_data` (or `--test` for the test DB). See **schem
 
 1. **Start the database:** `docker compose up -d` (from the project directory). On first run, init scripts create `nba_db_test` and apply the schema to both databases.
 2. **If you changed the schema** (or tables already existed): run `./schema/create_tables.sh` with `-r` to reset and recreate, or see **schema/README.md** for one-DB options.
-3. **Load data:** Use the notebook (`db_testing.ipynb`) or from the project directory: `python -m source.load_data` (and `--test` for the test DB). See **schema/README.md** for `--target` and other options.
+3. **Load data:** From the project directory: `python -m source.load_data` (and `--test` for the test DB). See **schema/README.md** for `--target` and other options.
 4. **Check data:** From the project directory, run `./schema/check_data.sh` to see row counts per table.
